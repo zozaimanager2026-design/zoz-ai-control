@@ -89,7 +89,6 @@ app.post("/api/jobs/:id/approve", (req, res) => {
   job.status = "approved";
   job.approvedAt = new Date().toISOString();
 
-  app.get("/{*splat}", (req, res) => {
 
 
 app.post("/api/jobs/:id/reject", (req, res) => {
