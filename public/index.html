@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZOZ AI Control</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: #f4f6f8;
+      color: #222;
+    }
+
+    header {
+      background: #111827;
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    main {
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 0 15px;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 15px;
+    }
+
+    .card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    }
+
+    .number {
+      font-size: 28px;
+      font-weight: bold;
+    }
+
+    section {
+      background: white;
+      margin-top: 20px;
+      padding: 20px;
+      border-radius: 12px;
+    }
+
+    button {
+      padding: 10px 16px;
+      border: 0;
+      border-radius: 8px;
+      cursor: pointer;
+      background: #111827;
+      color: white;
+    }
+
+    pre {
+      background: #f1f5f9;
+      padding: 15px;
+      overflow-x: auto;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <h1>ZOZ AI</h1>
+  <p>لوحة التحكم المركزية</p>
+</header>
+
+<main>
+
+  <div class="cards">
+
+    <div class="card">
+      <div>الحالة</div>
+      <div class="number" id="status">...</div>
+    </div>
+
+    <div class="card">
+      <div>المهام</div>
+      <div class="number" id="jobs">0</div>
+    </div>
+
+    <div class="card">
+      <div>الأدوات المتصلة</div>
+      <div class="number" id="connected">0</div>
+    </div>
+
+  </div>
+
+  <section>
+    <h2>حالة الأدوات</h2>
+    <pre id="connectors">جاري التحميل...</pre>
+  </section>
+
+  <section>
+    <h2>المهام</h2>
+    <div id="jobList">لا توجد مهام حاليًا.</div>
+  </section>
+
+  <section>
+    <h2>اختبار النظام</h2>
+    <button onclick="checkHealth()">فحص ZOZ AI</button>
+    <pre id="health">لم يتم الفحص بعد.</pre>
+  </section>
+
+</main>
+
+<script>
+async function loadDashboard() {
+  try {
+    const state = await fetch("/api/state").then(r => r.json());
+    const connectors = await fetch("/api/connectors/status").then(r => r.json());
+    const jobs = await fetch("/api/jobs").then(r => r.json());
+
+    document.getElementById("status").textContent =
+      state.status === "running" ? "يعمل" : state.status;
+
+    document.getElementById("jobs").textContent = jobs.length;
+
+    const connected = Object.values(connectors)
+      .filter(x => x.status === "connected").length;
+
+    document.getElementById("connected").textContent = connected;
+
+    document.getElementById("connectors").textContent =
+      JSON.stringify(connectors, null, 2);
+
+    if (jobs.length) {
+      document.getElementById("jobList").innerHTML =
+        jobs.map(job => `
+          <div class="card">
+            <strong>${job.title}</strong>
+            <p>${job.description || ""}</p>
+            <small>الحالة: ${job.status}</small>
+          </div>
+        `).join("");
+    }
+
+  } catch (error) {
+    document.getElementById("health").textContent =
+      "حدث خطأ في الاتصال بالنظام.";
+  }
+}
+
+async function checkHealth() {
+  const result = await fetch("/health").then(r => r.json());
+
+  document.getElementById("health").textContent =
+    JSON.stringify(result, null, 2);
+}
+
+loadDashboard();
+</script>
+
+</body>
+</html>
