@@ -90,7 +90,7 @@ app.post("/api/jobs/:id/approve", (req, res) => {
   job.approvedAt = new Date().toISOString();
 
   app.get("/{*splat}", (req, res) => {
-});
+
 
 app.post("/api/jobs/:id/reject", (req, res) => {
   const job = state.jobs.find((item) => item.id === req.params.id);
