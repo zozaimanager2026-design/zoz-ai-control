@@ -1,29 +1,49 @@
-# zoz-ai-control
-Zoz AI Control — لوحة تحكم ذكية لإدارة أدوات ومهام Zoz AI مع نظام موافقات للمهام الحساسة.
+# ZOZ AI — AI Business Operating System
 
-## التشغيل الحقيقي
-المشروع يعمل كطبقة التحكم الأساسية، ويحتوي على فحص جاهزية، سجل تدقيق، طابور مهام، وتنفيذ آمن للمهام غير المالية.
+هذا المستودع هو النواة التشغيلية لـ ZOZ AI. الهدف ليس عرض Dashboard فقط، بل طبقة تشغيل تحفظ حالة العمل، تدير العملاء والفرص والطلبات، تنظم المهام، تتحقق من الموصلات، وتسجل القرارات والأحداث، مع بوابة موافقة بشرية للعمليات المالية.
 
-### قواعد مهمة
-- لا تُحفظ الأسرار داخل GitHub.
-- أضف مفاتيح الخدمات في Environment Variables على منصة الاستضافة، وليس في المحادثة.
-- لا يُعتبر أي موصل خارجي متصلًا إلا بعد اعتماد فعلي والتحقق من الخدمة.
-- الدفع والشراء والتحويل والسحب واستلام الأموال تتطلب موافقة المستخدم.
-- المشروع المستهدف هو `zoz-ai-control` ولا حاجة لإنشاء مشروع Vercel جديد.
+## ما يعمل داخل النواة
 
-### متغيرات البيئة
-راجع `.env.example` لمعرفة أسماء المتغيرات المطلوبة. التخزين الدائم يحتاج `KV_REST_API_URL` و`KV_REST_API_TOKEN`. الموصلات الخارجية تحتاج مفاتيحها الخاصة.
+- **Business layer:** عملاء، عملاء محتملون، مراحل مبيعات، طلبات، منتجات، موردون، مصروفات، وفرص.
+- **Execution layer:** طابور مهام + دورة استقلالية تنفذ الأعمال الداخلية الآمنة فقط.
+- **Human approval:** الدفع، الشراء، التحويل، السحب، التحصيل، واستلام الأموال لا تُنفذ تلقائيًا.
+- **Approval ledger:** تسجيل طلبات الموافقة وحالتها وتوقيتها بدل الاعتماد على زر شكلي.
+- **Audit log:** سجل مركزي للأحداث التشغيلية.
+- **Connector verification:** لا يُعتبر الموصل جاهزًا للتشغيل الخارجي إلا بعد تحقق فعلي.
+- **Persistence:** دعم KV-compatible REST عبر Environment Variables.
+- **WhatsApp CRM:** استقبال رسائل WhatsApp وتحويلها إلى عميل/Lead داخل طبقة الأعمال، مع دعم التحقق من توقيع `X-Hub-Signature-256` عند توفير `WHATSAPP_APP_SECRET`.
+- **Vercel:** المشروع يستهدف مشروع Vercel الحالي ولا ينشئ مشروعًا جديدًا.
 
-### WhatsApp Business
-قناة الأعمال هي رقم ZOZ AI على WhatsApp Business. تكامل Cloud API أصبح مجهزًا في النواة للتحقق من رقم الهاتف عبر `WHATSAPP_ACCESS_TOKEN` و`WHATSAPP_PHONE_NUMBER_ID`، واستقبال Webhook عبر `/api/whatsapp/webhook`. إعداد التحقق يحتاج `WHATSAPP_VERIFY_TOKEN` أيضًا. لا تُضع أي قيمة سرية داخل GitHub.
+## حدود الاستقلالية
 
-### نقاط الفحص
+ZOZ AI يستطيع تشغيل العمليات الداخلية الآمنة تلقائيًا. الموافقة البشرية لا تعني أن النواة ستنفذ حركة مالية فعلية: النواة تسجل التفويض، لكنها لا تحتوي على منفذ مالي مباشر. أي تكامل مالي مستقبلي يجب أن يظل خلف موافقة بشرية صريحة وأسرار محفوظة في Environment Variables.
+
+## الأسرار
+
+لا تضع أي Secret أو Access Token في GitHub أو الكود. استخدم Environment Variables في Vercel. راجع `.env.example` لمعرفة أسماء المتغيرات.
+
+## نقاط التشغيل
+
 - `/health` — صحة الخدمة.
-- `/api/self-test` — اختبار مكونات التحكم الأساسية.
-- `/api/readiness` — العوائق الحالية.
-- `/api/plan` — ترتيب التنفيذ.
-- `/api/connectors/status` — حالات الموصلات.
-- `/api/connectors/verify?id=whatsapp` — التحقق الفعلي من WhatsApp API.
-- `/api/automation/status` — قابلية التشغيل الآلي.
+- `/api/self-test` — الاختبار الداخلي.
+- `/api/readiness` — العوائق الفعلية.
+- `/api/plan` — خطة التنفيذ المرتبة.
+- `/api/state` — الحالة التشغيلية.
 - `/api/audit` — سجل التدقيق.
-- `/api/whatsapp/webhook` — نقطة تحقق Webhook الخاصة بـWhatsApp Cloud API.
+- `/api/approvals` — سجل الموافقات.
+- `/api/jobs` — طابور المهام.
+- `/api/business/summary` — ملخص التشغيل التجاري.
+- `/api/business/customers` — العملاء.
+- `/api/business/leads` — العملاء المحتملون.
+- `/api/business/orders` — الطلبات.
+- `/api/business/opportunities` — الفرص.
+- `/api/business/actions/plan` — تخطيط إجراء مع تحديد ما إذا كان ماليًا.
+- `/api/connectors/status` — حالة الموصلات.
+- `/api/connectors/verify?id=whatsapp` — تحقق فعلي من WhatsApp API.
+- `/api/automation/status` — حالة الاستقلالية الآمنة.
+- `/api/automation/cycle` — تشغيل دورة الاستقلالية؛ GET متاح لـVercel Cron وPOST متاح للتشغيل اليدوي.
+- `/api/whatsapp/webhook` — تحقق واستقبال WhatsApp Cloud API.
+
+## الاختبارات
+
+`npm test` يتحقق من syntax ويشغل اختبارات طبقة الأعمال واختبارات WhatsApp CRM.
