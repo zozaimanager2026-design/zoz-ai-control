@@ -14,7 +14,10 @@ app.use(express.static(path.join(__dirname, "public")));
 const connectorConfig = {
   github: { status: "connected", label: "GitHub" },
   vercel: { status: process.env.VERCEL ? "deployed" : "needs_setup", label: "Vercel" },
-  database: { status: process.env.DATABASE_URL ? "connected" : "needs_setup", label: "Database" },
+  database: {
+    status: process.env.DATABASE_URL || process.env.KV_REST_API_URL ? "connected" : "needs_setup",
+    label: "Database"
+  },
   whatsapp: { status: process.env.WHATSAPP_ACCESS_TOKEN ? "connected" : "needs_setup", label: "WhatsApp" },
   youtube: { status: process.env.YOUTUBE_ACCESS_TOKEN ? "connected" : "needs_setup", label: "YouTube" },
   tiktok: { status: process.env.TIKTOK_ACCESS_TOKEN ? "connected" : "needs_setup", label: "TikTok" },
@@ -31,6 +34,60 @@ const state = {
   connectors: connectorConfig
 };
 
+const persistence = {
+  enabled: Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN),
+  key: process.env.ZOZ_STATE_KEY || "zoz-ai:state"
+};
+
+async function kvRequest(method, key, body) {
+  if (!persistence.enabled) return null;
+
+  const url = `${process.env.KV_REST_API_URL.replace(/\/$/, "")}/${encodeURIComponent(key)}`;
+  const response = await fetch(url, {
+    method,
+    headers: {
+      Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`,
+      "Content-Type": "application/json"
+    },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Persistence request failed: ${response.status}`);
+  }
+
+  return response.json().catch(() => null);
+}
+
+async function loadState() {
+  if (!persistence.enabled) return;
+
+  try {
+    const result = await kvRequest("GET", persistence.key);
+    if (result && result.result) {
+      const saved = typeof result.result === "string" ? JSON.parse(result.result) : result.result;
+      if (saved && typeof saved === "object") {
+        state.jobs = Array.isArray(saved.jobs) ? saved.jobs : [];
+      }
+    }
+  } catch (error) {
+    console.error("State load warning:", error.message);
+  }
+}
+
+async function saveState() {
+  if (!persistence.enabled) return;
+
+  try {
+    await kvRequest("PUT", persistence.key, {
+      ...state,
+      savedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("State save warning:", error.message);
+  }
+}
+
 function isFinanciallySensitive(text = "") {
   return /دفع|شراء|تحويل|سحب|استلام أموال|استلام اموال|بنك|بطاقة|bank|card|payment|purchase|transfer|withdraw/i.test(
     text
@@ -42,19 +99,26 @@ app.get("/health", (req, res) => {
     ok: true,
     service: ZOZ_NAME,
     status: "healthy",
+    persistence: persistence.enabled ? "enabled" : "memory_only",
     time: new Date().toISOString()
   });
 });
 
 app.get("/api/state", (req, res) => {
-  res.json(state);
+  res.json({
+    ...state,
+    persistence: {
+      enabled: persistence.enabled,
+      provider: persistence.enabled ? "KV-compatible REST" : "memory"
+    }
+  });
 });
 
 app.get("/api/jobs", (req, res) => {
   res.json(state.jobs);
 });
 
-app.post("/api/jobs", (req, res) => {
+app.post("/api/jobs", async (req, res) => {
   const { title, description = "" } = req.body;
 
   if (!title) {
@@ -73,26 +137,29 @@ app.post("/api/jobs", (req, res) => {
   };
 
   state.jobs.push(job);
+  await saveState();
   res.status(201).json(job);
 });
 
-app.post("/api/jobs/:id/approve", (req, res) => {
+app.post("/api/jobs/:id/approve", async (req, res) => {
   const job = state.jobs.find((item) => item.id === req.params.id);
 
   if (!job) return res.status(404).json({ error: "المهمة غير موجودة" });
 
   job.status = "approved";
   job.approvedAt = new Date().toISOString();
+  await saveState();
   res.json(job);
 });
 
-app.post("/api/jobs/:id/reject", (req, res) => {
+app.post("/api/jobs/:id/reject", async (req, res) => {
   const job = state.jobs.find((item) => item.id === req.params.id);
 
   if (!job) return res.status(404).json({ error: "المهمة غير موجودة" });
 
   job.status = "rejected";
   job.rejectedAt = new Date().toISOString();
+  await saveState();
   res.json(job);
 });
 
@@ -113,6 +180,10 @@ app.get("/api/connectors/status", (req, res) => {
       connected: Object.values(state.connectors).filter((x) => x.status === "connected").length,
       deployed: Object.values(state.connectors).filter((x) => x.status === "deployed").length,
       needsSetup: Object.values(state.connectors).filter((x) => x.status === "needs_setup").length
+    },
+    persistence: {
+      enabled: persistence.enabled,
+      provider: persistence.enabled ? "KV-compatible REST" : "memory"
     }
   });
 });
@@ -121,7 +192,7 @@ app.get("/api/connectors/requirements", (req, res) => {
   res.json({
     github: "متصل عبر GitHub Connector",
     vercel: "النظام منشور على Vercel؛ ربط Vercel MCP داخل ChatGPT منفصل عن نشر الموقع",
-    database: "DATABASE_URL",
+    database: "DATABASE_URL أو KV_REST_API_URL + KV_REST_API_TOKEN",
     whatsapp: "WHATSAPP_ACCESS_TOKEN",
     youtube: "YOUTUBE_ACCESS_TOKEN",
     tiktok: "TIKTOK_ACCESS_TOKEN",
@@ -135,6 +206,8 @@ app.get("/{*splat}", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-app.listen(PORT, () => {
-  console.log(`${ZOZ_NAME} running on port ${PORT}`);
+loadState().finally(() => {
+  app.listen(PORT, () => {
+    console.log(`${ZOZ_NAME} running on port ${PORT}`);
+  });
 });
