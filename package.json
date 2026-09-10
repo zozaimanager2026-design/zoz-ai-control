@@ -4,7 +4,8 @@
   "description": "Zoz AI Control",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --check server.js"
   },
   "dependencies": {
     "express": "^5.1.0",
