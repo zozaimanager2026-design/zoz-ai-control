@@ -1,6 +1,7 @@
 const express = require("express");
 const dotenv = require("dotenv");
 const path = require("path");
+const business = require("./business");
 
 dotenv.config();
 
@@ -22,6 +23,7 @@ const state = {
   financialApprovalRequired: true,
   jobs: [],
   audit: [],
+  business: business.createBusinessState(),
   connectors: {
     github: { status: "connected", label: "GitHub", automation: "ready" },
     vercel: { status: "deployed", label: "Vercel", automation: "deployment_verified" },
@@ -80,6 +82,9 @@ async function loadState() {
       if (saved && typeof saved === "object") {
         state.jobs = Array.isArray(saved.jobs) ? saved.jobs : [];
         state.audit = Array.isArray(saved.audit) ? saved.audit.slice(-500) : [];
+        if (saved.business && typeof saved.business === "object") {
+          state.business = { ...business.createBusinessState(), ...saved.business };
+        }
       }
     }
   } catch (error) {
@@ -152,7 +157,7 @@ function readiness() {
     }
   }
   blockers.sort((a, b) => a.priority - b.priority);
-  return { ok: blockers.length === 0, service: ZOZ_NAME, core: "healthy", persistence: persistence.enabled ? "enabled" : "memory_only", financialApprovalRequired: true, autonomy: true, blockers };
+  return { ok: blockers.length === 0, service: ZOZ_NAME, core: "healthy", persistence: persistence.enabled ? "enabled" : "memory_only", financialApprovalRequired: true, autonomy: true, blockers, business: business.businessSummary(state.business) };
 }
 
 function executionPlan() {
@@ -161,7 +166,7 @@ function executionPlan() {
     service: ZOZ_NAME,
     mode: "ordered_execution",
     rule: "نفّذ تلقائيًا ما يمكن تنفيذه بأمان؛ أوقف فقط عند اعتماد/سر/قرار مالي مطلوب من المستخدم",
-    completed: ["core_health", "github_repository", "vercel_deployment", "readiness_dashboard", "financial_approval_gate", "safe_internal_execution", "audit_log", "connector_automation_matrix", "real_connector_verification", "autonomous_cycle"],
+    completed: ["core_health", "github_repository", "vercel_deployment", "readiness_dashboard", "financial_approval_gate", "safe_internal_execution", "audit_log", "connector_automation_matrix", "real_connector_verification", "autonomous_cycle", "business_domain_layer", "business_api"],
     next: r.blockers.map((b, index) => ({ step: index + 1, ...b })),
     user_action_required: r.blockers.filter((b) => b.owner === "user").map((b) => b.id),
     financial_actions_blocked: true
@@ -175,6 +180,8 @@ function systemSelfTest() {
     { id: "readiness", ok: readiness().core === "healthy" },
     { id: "job_store", ok: Array.isArray(state.jobs) },
     { id: "audit_store", ok: Array.isArray(state.audit) },
+    { id: "business_store", ok: Array.isArray(state.business.leads) && Array.isArray(state.business.orders) },
+    { id: "business_module", ok: typeof business.businessSummary === "function" },
     { id: "persistence_config", ok: !persistence.enabled || Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) },
     { id: "connector_verification_engine", ok: typeof verifyConnector === "function" },
     { id: "autonomous_cycle", ok: typeof runAutonomousCycle === "function" }
@@ -231,6 +238,42 @@ app.get("/api/self-test", (req, res) => res.json(systemSelfTest()));
 app.get("/api/audit", (req, res) => res.json({ events: state.audit.slice(-100) }));
 app.get("/api/jobs", (req, res) => res.json(state.jobs));
 
+app.get("/api/business/summary", (req, res) => res.json(business.businessSummary(state.business)));
+app.get("/api/business/leads", (req, res) => res.json(state.business.leads));
+app.get("/api/business/orders", (req, res) => res.json(state.business.orders));
+app.get("/api/business/opportunities", (req, res) => res.json(state.business.opportunities));
+app.get("/api/business/products", (req, res) => res.json(state.business.products));
+app.get("/api/business/suppliers", (req, res) => res.json(state.business.suppliers));
+app.get("/api/business/expenses", (req, res) => res.json(state.business.expenses));
+
+app.post("/api/business/leads", async (req, res) => {
+  const lead = business.addLead(state.business, req.body);
+  audit("business_lead_created", { leadId: lead.id });
+  await saveState();
+  res.status(201).json(lead);
+});
+app.post("/api/business/leads/:id/stage", async (req, res) => {
+  try {
+    const lead = business.moveLead(state.business, req.params.id, req.body.stage);
+    audit("business_lead_stage_changed", { leadId: lead.id, stage: lead.stage });
+    await saveState();
+    res.json(lead);
+  } catch (error) { res.status(400).json({ error: error.message }); }
+});
+app.post("/api/business/orders", async (req, res) => {
+  const order = business.createOrder(state.business, req.body);
+  audit("business_order_created", { orderId: order.id, financialApprovalRequired: true });
+  await saveState();
+  res.status(201).json(order);
+});
+app.post("/api/business/opportunities", async (req, res) => {
+  const opportunity = business.registerOpportunity(state.business, req.body);
+  audit("business_opportunity_registered", { opportunityId: opportunity.id, score: opportunity.score });
+  await saveState();
+  res.status(201).json(opportunity);
+});
+app.post("/api/business/actions/plan", (req, res) => res.json(business.planAction(req.body.action, req.body.payload)));
+
 app.post("/api/jobs", async (req, res) => {
   const { title, description = "" } = req.body;
   if (!title) return res.status(400).json({ error: "عنوان المهمة مطلوب" });
@@ -274,7 +317,7 @@ app.get("/api/connectors/verify", async (req, res) => {
 
 app.get("/api/automation/status", (req, res) => {
   const connectors = Object.entries(state.connectors).map(([id, connector]) => ({ id, label: connector.label, status: connector.status, automation: connector.automation, externallyExecutable: connector.status === "verified" && connector.automation === "ready" }));
-  res.json({ mode: "safe_autonomy", financialApprovalRequired: true, externalActionsAllowedOnlyForVerifiedConnectors: true, autonomousCycleEndpoint: "/api/automation/cycle", connectors, selfTest: systemSelfTest() });
+  res.json({ mode: "safe_autonomy", financialApprovalRequired: true, externalActionsAllowedOnlyForVerifiedConnectors: true, autonomousCycleEndpoint: "/api/automation/cycle", connectors, selfTest: systemSelfTest(), business: business.businessSummary(state.business) });
 });
 
 app.get("/api/automation/cycle", async (req, res) => {
@@ -284,4 +327,4 @@ app.get("/api/automation/cycle", async (req, res) => {
 
 app.get("/{*splat}", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
-loadState().finally(() => { audit("system_started", { persistence: persistence.enabled, autonomousCycle: true }); app.listen(PORT, () => console.log(`${ZOZ_NAME} running on port ${PORT}`)); });
+loadState().finally(() => { audit("system_started", { persistence: persistence.enabled, autonomousCycle: true, businessLayer: true }); app.listen(PORT, () => console.log(`${ZOZ_NAME} running on port ${PORT}`)); });
