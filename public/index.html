@@ -13,6 +13,7 @@
     .number { font-size: 28px; font-weight: bold; }
     section { background: white; margin-top: 20px; padding: 20px; border-radius: 12px; }
     button { padding: 10px 16px; border: 0; border-radius: 8px; cursor: pointer; background: #111827; color: white; margin-left: 8px; margin-bottom: 8px; }
+    button:disabled { opacity: .6; cursor: wait; }
     pre { background: #f1f5f9; padding: 15px; overflow-x: auto; border-radius: 8px; white-space: pre-wrap; }
     .blocker { margin: 10px 0; padding: 12px; background: #fff7ed; border-radius: 8px; }
     .ok { background: #ecfdf5; }
@@ -24,12 +25,13 @@
   <div class="cards">
     <div class="card"><div>الحالة</div><div class="number" id="status">...</div></div>
     <div class="card"><div>المهام</div><div class="number" id="jobs">0</div></div>
-    <div class="card"><div>الأدوات المتصلة</div><div class="number" id="connected">0</div></div>
+    <div class="card"><div>الأدوات المتحققة</div><div class="number" id="connected">0</div></div>
     <div class="card"><div>العوائق</div><div class="number" id="blockerCount">...</div></div>
   </div>
 
   <section>
     <h2>حالة الأدوات</h2>
+    <button id="verifyButton" onclick="verifyConnectors()">تحقق من الموصلات الآن</button>
     <pre id="connectors">جاري التحميل...</pre>
   </section>
 
@@ -55,25 +57,46 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>\"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
 }
 
-async function getJson(url) {
-  const response = await fetch(url);
+async function getJson(url, options = {}) {
+  const response = await fetch(url, options);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
 }
 
 function renderReadiness(data) {
   const box = document.getElementById("readiness");
-  document.getElementById("blockerCount").textContent = data.blockers.length;
-  if (!data.blockers.length) {
+  const blockers = Array.isArray(data.blockers) ? data.blockers : [];
+  document.getElementById("blockerCount").textContent = blockers.length;
+  if (!blockers.length) {
     box.innerHTML = '<div class="card ok"><strong>جاهز بالكامل</strong><p>لا توجد عوائق مسجلة.</p></div>';
     return;
   }
-  box.innerHTML = data.blockers.map((item, index) => `
+  box.innerHTML = blockers.map((item, index) => `
     <div class="blocker">
       <strong>${index + 1}. ${escapeHtml(item.id)}</strong>
       <p>${escapeHtml(item.action)}</p>
     </div>
   `).join("");
+}
+
+function renderConnectors(connectors) {
+  const entries = Object.entries(connectors || {});
+  const verifiedCount = entries.filter(([, item]) => ["verified", "deployed", "connected"].includes(item.status)).length;
+  document.getElementById("connected").textContent = verifiedCount;
+  document.getElementById("connectors").textContent = JSON.stringify(connectors, null, 2);
+}
+
+async function refreshDashboard() {
+  const [state, connectors, jobs, readiness] = await Promise.all([
+    getJson("/api/state"), getJson("/api/connectors/status"), getJson("/api/jobs"), getJson("/api/readiness")
+  ]);
+  document.getElementById("status").textContent = state.status === "running" ? "يعمل" : state.status;
+  document.getElementById("jobs").textContent = jobs.length;
+  renderConnectors(connectors);
+  renderReadiness(readiness);
+  document.getElementById("jobList").innerHTML = jobs.length ? jobs.map(job => `
+    <div class="card"><strong>${escapeHtml(job.title)}</strong><p>${escapeHtml(job.description)}</p><small>الحالة: ${escapeHtml(job.status)}</small></div>
+  `).join("") : "لا توجد مهام حاليًا.";
 }
 
 async function checkReadiness() {
@@ -86,24 +109,26 @@ async function checkReadiness() {
   }
 }
 
-async function loadDashboard() {
+async function verifyConnectors() {
+  const button = document.getElementById("verifyButton");
+  button.disabled = true;
+  button.textContent = "جارٍ التحقق...";
   try {
-    const [state, connectors, jobs, readiness] = await Promise.all([
-      getJson("/api/state"), getJson("/api/connectors/status"), getJson("/api/jobs"), getJson("/api/readiness")
-    ]);
-    document.getElementById("status").textContent = state.status === "running" ? "يعمل" : state.status;
-    document.getElementById("jobs").textContent = jobs.length;
-    document.getElementById("connected").textContent = Object.values(connectors).filter(x => x.status === "connected").length;
-    document.getElementById("connectors").textContent = JSON.stringify(connectors, null, 2);
-    renderReadiness(readiness);
-    if (jobs.length) {
-      document.getElementById("jobList").innerHTML = jobs.map(job => `
-        <div class="card"><strong>${escapeHtml(job.title)}</strong><p>${escapeHtml(job.description)}</p><small>الحالة: ${escapeHtml(job.status)}</small></div>
-      `).join("");
-    }
+    const result = await getJson("/api/connectors/verify");
+    renderConnectors(result.connectors || result.results || {});
+    if (result.readiness) renderReadiness(result.readiness);
+    document.getElementById("health").textContent = JSON.stringify(result, null, 2);
   } catch (error) {
-    document.getElementById("health").textContent = "حدث خطأ في الاتصال بالنظام: " + error.message;
+    document.getElementById("health").textContent = "تعذر التحقق من الموصلات: " + error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = "تحقق من الموصلات الآن";
   }
+}
+
+async function loadDashboard() {
+  try { await refreshDashboard(); }
+  catch (error) { document.getElementById("health").textContent = "حدث خطأ في الاتصال بالنظام: " + error.message; }
 }
 
 async function checkHealth() {
