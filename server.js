@@ -89,8 +89,8 @@ app.post("/api/jobs/:id/approve", (req, res) => {
   job.status = "approved";
   job.approvedAt = new Date().toISOString();
 
-  app.get("/{*splat}", (req, res) => {
-
+  res.json(job);
+});
 
 app.post("/api/jobs/:id/reject", (req, res) => {
   const job = state.jobs.find((item) => item.id === req.params.id);
@@ -121,7 +121,7 @@ app.get("/api/connectors/status", (req, res) => {
   res.json(state.connectors);
 });
 
-app.get("*", (req, res) => {
+app.get("/{*splat}", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
