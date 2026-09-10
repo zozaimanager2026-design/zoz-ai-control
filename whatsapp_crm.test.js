@@ -9,7 +9,7 @@ const {
 
 const state = createBusinessState();
 
-assert.equal(normalizePhone("+20 100-123-4567"), "+201001234567");
+assert.equal(normalizePhone("+20 100-123-4567"), "201001234567");
 
 const payload = {
   object: "whatsapp_business_account",
