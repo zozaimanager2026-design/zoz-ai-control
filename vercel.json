@@ -14,7 +14,7 @@
   ],
   "crons": [
     {
-      "path": "/api/connectors/verify",
+      "path": "/api/automation/cycle",
       "schedule": "0 3 * * *"
     }
   ]
