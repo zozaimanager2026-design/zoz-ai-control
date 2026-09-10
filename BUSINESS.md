@@ -11,10 +11,16 @@ The business domain is intentionally separate from connector credentials and fro
 - Action planner that marks financial actions as `approval_required`.
 - Business summary metrics for the control dashboard.
 
+## Human contact identity
+
+The initial customer-facing WhatsApp channel is owned by **Hazem Ahmed** and uses Hazem's phone number. ZOZ AI operates as the management/automation layer behind that human-owned channel; it is not treated as a separate financial or legal identity.
+
+The WhatsApp number itself must be connected through the authorized WhatsApp/Meta provider. Its phone number ID and access token belong only in the hosting Environment Variables and must never be committed to the repository or shared in chat.
+
 ## Financial safety
 
 ZOZ AI may prepare a quote, organize a customer request, score an opportunity, or create an internal task automatically. It must not collect a deposit, purchase a product, pay a supplier, transfer money, refund, or otherwise receive/withdraw money without human approval.
 
 ## Integration status
 
-`business.js` is the tested domain module. The existing `server.js` core remains unchanged while the domain module is validated independently. The next integration step is to expose this domain state through the existing API/dashboard without replacing the current core or creating another Vercel project.
+`business.js` is the tested domain module and the business API/dashboard are integrated into the existing core. The human-owned WhatsApp channel is the intended customer contact path; actual WhatsApp authorization remains an external account-ownership step. No separate ZOZ AI phone identity is required at this stage.
