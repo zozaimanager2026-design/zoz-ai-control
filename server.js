@@ -161,7 +161,7 @@ function executionPlan() {
     service: ZOZ_NAME,
     mode: "ordered_execution",
     rule: "نفّذ تلقائيًا ما يمكن تنفيذه بأمان؛ أوقف فقط عند اعتماد/سر/قرار مالي مطلوب من المستخدم",
-    completed: ["core_health", "github_repository", "vercel_deployment", "readiness_dashboard", "financial_approval_gate", "safe_internal_execution", "audit_log", "connector_automation_matrix", "real_connector_verification"],
+    completed: ["core_health", "github_repository", "vercel_deployment", "readiness_dashboard", "financial_approval_gate", "safe_internal_execution", "audit_log", "connector_automation_matrix", "real_connector_verification", "autonomous_cycle"],
     next: r.blockers.map((b, index) => ({ step: index + 1, ...b })),
     user_action_required: r.blockers.filter((b) => b.owner === "user").map((b) => b.id),
     financial_actions_blocked: true
@@ -176,9 +176,51 @@ function systemSelfTest() {
     { id: "job_store", ok: Array.isArray(state.jobs) },
     { id: "audit_store", ok: Array.isArray(state.audit) },
     { id: "persistence_config", ok: !persistence.enabled || Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) },
-    { id: "connector_verification_engine", ok: typeof verifyConnector === "function" }
+    { id: "connector_verification_engine", ok: typeof verifyConnector === "function" },
+    { id: "autonomous_cycle", ok: typeof runAutonomousCycle === "function" }
   ];
   return { ok: checks.every((x) => x.ok), checks, testedAt: new Date().toISOString() };
+}
+
+async function executeSafeJob(job) {
+  if (!job || !["pending", "approved"].includes(job.status)) return { executed: false, reason: "not_runnable" };
+  if (job.financial || isFinanciallySensitive(`${job.title} ${job.description}`)) {
+    job.financial = true;
+    job.status = "approval_required";
+    audit("financial_execution_blocked", { jobId: job.id });
+    return { executed: false, reason: "financial_approval_required" };
+  }
+  job.status = "executed";
+  job.executedAt = new Date().toISOString();
+  job.execution = { mode: "safe_internal", result: "completed_without_external_financial_action" };
+  audit("job_auto_executed", { jobId: job.id, title: job.title });
+  return { executed: true, jobId: job.id };
+}
+
+async function runAutonomousCycle() {
+  const startedAt = new Date().toISOString();
+  audit("autonomy_cycle_started", { startedAt });
+  const selfTest = systemSelfTest();
+  if (!selfTest.ok) {
+    audit("autonomy_cycle_blocked", { reason: "self_test_failed" });
+    return { ok: false, startedAt, selfTest, executed: [], blockers: [{ owner: "system", action: "repair_self_test" }] };
+  }
+  const verificationIds = Object.keys(state.connectors).filter((id) => !["github", "vercel"].includes(id) && ["configured_unverified", "error"].includes(state.connectors[id].status));
+  const verification = [];
+  for (const id of verificationIds) verification.push(await verifyConnector(id));
+  const executed = [];
+  const skipped = [];
+  for (const job of state.jobs) {
+    if (["pending", "approved"].includes(job.status)) {
+      const result = await executeSafeJob(job);
+      if (result.executed) executed.push(result);
+      else skipped.push({ jobId: job.id, reason: result.reason });
+    }
+  }
+  const r = readiness();
+  audit("autonomy_cycle_completed", { executed: executed.length, skipped: skipped.length, blockers: r.blockers.length });
+  await saveState();
+  return { ok: true, startedAt, completedAt: new Date().toISOString(), selfTest, verification, executed, skipped, readiness: r };
 }
 
 app.get("/health", (req, res) => res.json({ ok: true, service: ZOZ_NAME, status: "healthy", persistence: persistence.enabled ? "enabled" : "memory_only", time: new Date().toISOString() }));
@@ -207,10 +249,10 @@ app.post("/api/jobs/:id/reject", async (req, res) => {
 });
 app.post("/api/jobs/:id/execute", async (req, res) => {
   const job = state.jobs.find((x) => x.id === req.params.id); if (!job) return res.status(404).json({ error: "المهمة غير موجودة" });
-  if (job.financial) { audit("financial_execution_blocked", { jobId: job.id }); await saveState(); return res.status(403).json({ error: "موافقة المستخدم مطلوبة قبل تنفيذ مهمة مالية", status: "approval_required" }); }
-  if (!["pending", "approved"].includes(job.status)) return res.status(409).json({ error: "المهمة ليست قابلة للتنفيذ", status: job.status });
-  job.status = "executed"; job.executedAt = new Date().toISOString(); job.executionMode = "safe_internal_marker"; audit("job_executed", { jobId: job.id, executionMode: job.executionMode }); await saveState();
-  res.json({ ok: true, job, note: "تم تسجيل التنفيذ الداخلي فقط؛ لا يوجد إجراء مالي أو خارجي تلقائي هنا." });
+  const result = await executeSafeJob(job);
+  if (result.reason === "financial_approval_required") { await saveState(); return res.status(403).json({ error: "موافقة المستخدم مطلوبة قبل تنفيذ مهمة مالية", status: "approval_required" }); }
+  if (!result.executed) return res.status(409).json({ error: "المهمة ليست قابلة للتنفيذ", status: job.status });
+  await saveState(); res.json({ ok: true, job, note: "تم تنفيذ المهمة الداخلية الآمنة فقط؛ لا يوجد إجراء مالي أو خارجي تلقائي هنا." });
 });
 
 app.post("/api/replies/preview", (req, res) => { const { text = "" } = req.body; res.json({ text, financialApprovalRequired: isFinanciallySensitive(text), ready: true }); });
@@ -232,9 +274,14 @@ app.get("/api/connectors/verify", async (req, res) => {
 
 app.get("/api/automation/status", (req, res) => {
   const connectors = Object.entries(state.connectors).map(([id, connector]) => ({ id, label: connector.label, status: connector.status, automation: connector.automation, externallyExecutable: connector.status === "verified" && connector.automation === "ready" }));
-  res.json({ mode: "safe_autonomy", financialApprovalRequired: true, externalActionsAllowedOnlyForVerifiedConnectors: true, connectors, selfTest: systemSelfTest() });
+  res.json({ mode: "safe_autonomy", financialApprovalRequired: true, externalActionsAllowedOnlyForVerifiedConnectors: true, autonomousCycleEndpoint: "/api/automation/cycle", connectors, selfTest: systemSelfTest() });
+});
+
+app.get("/api/automation/cycle", async (req, res) => {
+  try { res.json(await runAutonomousCycle()); }
+  catch (error) { audit("autonomy_cycle_error", { message: error.message }); await saveState(); res.status(500).json({ ok: false, error: "autonomy_cycle_failed" }); }
 });
 
 app.get("/{*splat}", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
-loadState().finally(() => { audit("system_started", { persistence: persistence.enabled }); app.listen(PORT, () => console.log(`${ZOZ_NAME} running on port ${PORT}`)); });
+loadState().finally(() => { audit("system_started", { persistence: persistence.enabled, autonomousCycle: true }); app.listen(PORT, () => console.log(`${ZOZ_NAME} running on port ${PORT}`)); });
