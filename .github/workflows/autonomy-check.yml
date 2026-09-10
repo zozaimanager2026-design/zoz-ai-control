@@ -1,0 +1,54 @@
+name: ZOZ AI Autonomy Check
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+  push:
+    branches: [main]
+
+jobs:
+  autonomy-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check production health
+        run: |
+          set -euo pipefail
+          BASE_URL="https://zoz-ai-control.vercel.app"
+          echo "== Health =="
+          curl --fail --silent --show-error --max-time 30 "$BASE_URL/health" | tee /tmp/health.json
+          echo
+          echo "== Self test =="
+          curl --fail --silent --show-error --max-time 30 "$BASE_URL/api/self-test" | tee /tmp/self-test.json
+          echo
+          echo "== Readiness =="
+          curl --fail --silent --show-error --max-time 30 "$BASE_URL/api/readiness" | tee /tmp/readiness.json
+          echo
+          echo "== Connector verification =="
+          curl --fail --silent --show-error --max-time 120 "$BASE_URL/api/connectors/verify" | tee /tmp/connectors.json
+          echo
+
+      - name: Validate autonomous core
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          health = json.loads(Path('/tmp/health.json').read_text())
+          self_test = json.loads(Path('/tmp/self-test.json').read_text())
+          readiness = json.loads(Path('/tmp/readiness.json').read_text())
+          connectors = json.loads(Path('/tmp/connectors.json').read_text())
+
+          if not health.get('ok'):
+              raise SystemExit('Production health check failed')
+          if not self_test.get('ok'):
+              raise SystemExit('ZOZ AI self-test reported failure')
+
+          print('Autonomous core: healthy')
+          print('Readiness:', readiness.get('ok'))
+          print('Persistence:', readiness.get('persistence'))
+          print('Financial approval required:', readiness.get('financialApprovalRequired'))
+          print('Connector verification completed:', len(connectors.get('results', [])))
+          print('Blockers:', readiness.get('blockers', []))
+          PY
