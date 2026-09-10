@@ -7,20 +7,27 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 0; background: #f4f6f8; color: #222; }
     header { background: #111827; color: white; padding: 20px; text-align: center; }
-    main { max-width: 1000px; margin: 20px auto; padding: 0 15px; }
+    main { max-width: 1100px; margin: 20px auto; padding: 0 15px; }
     .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 15px; }
     .card { background: white; padding: 18px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
     .number { font-size: 28px; font-weight: bold; }
     section { background: white; margin-top: 20px; padding: 20px; border-radius: 12px; }
     button { padding: 10px 16px; border: 0; border-radius: 8px; cursor: pointer; background: #111827; color: white; margin-left: 8px; margin-bottom: 8px; }
     button:disabled { opacity: .6; cursor: wait; }
+    input, select, textarea { width: 100%; box-sizing: border-box; padding: 10px; margin: 6px 0 10px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; }
+    textarea { min-height: 80px; resize: vertical; }
+    label { display: block; font-weight: 600; margin-top: 5px; }
     pre { background: #f1f5f9; padding: 15px; overflow-x: auto; border-radius: 8px; white-space: pre-wrap; }
     .blocker { margin: 10px 0; padding: 12px; background: #fff7ed; border-radius: 8px; }
     .ok { background: #ecfdf5; }
     .warning { background: #fff7ed; }
-    .business-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+    .business-grid, .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
     .business-item { background: #f8fafc; padding: 12px; border-radius: 8px; }
     .small { font-size: 13px; color: #64748b; }
+    .item { background: #f8fafc; padding: 12px; border-radius: 8px; margin: 8px 0; }
+    .success { color: #166534; font-weight: bold; }
+    .danger { color: #991b1b; font-weight: bold; }
+    .pill { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #e2e8f0; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -54,6 +61,62 @@
   </section>
 
   <section>
+    <h2>تشغيل المبيعات</h2>
+    <div class="form-grid">
+      <div>
+        <h3>إضافة عميل محتمل</h3>
+        <label>الاسم</label><input id="leadName" placeholder="اسم العميل">
+        <label>الهاتف</label><input id="leadPhone" placeholder="رقم الهاتف">
+        <label>الطلب</label><textarea id="leadRequest" placeholder="الجهاز أو المنتج المطلوب"></textarea>
+        <label>الميزانية</label><input id="leadBudget" type="number" min="0" placeholder="مثال: 15000">
+        <label>المصدر</label><input id="leadSource" value="manual" placeholder="WhatsApp / Facebook / manual">
+        <button onclick="createLead()">حفظ العميل المحتمل</button>
+      </div>
+      <div>
+        <h3>إضافة فرصة</h3>
+        <label>العنوان</label><input id="oppTitle" placeholder="مثال: طلب تكييف 3 حصان">
+        <label>الوصف</label><textarea id="oppDescription" placeholder="تفاصيل الفرصة"></textarea>
+        <label>درجة الفرصة (0-100)</label><input id="oppScore" type="number" min="0" max="100" value="70">
+        <label>المصدر</label><input id="oppSource" value="manual">
+        <button onclick="createOpportunity()">حفظ الفرصة</button>
+      </div>
+      <div>
+        <h3>إنشاء طلب</h3>
+        <label>Lead ID (اختياري)</label><input id="orderLeadId" placeholder="من قائمة العملاء المحتملين">
+        <label>المنتج</label><input id="orderProduct" placeholder="اسم الجهاز">
+        <label>السعر المعروض</label><input id="orderPrice" type="number" min="0" placeholder="السعر">
+        <label>الدفعة المطلوبة</label><input id="orderDeposit" type="number" min="0" placeholder="العربون">
+        <button onclick="createOrder()">إنشاء الطلب</button>
+      </div>
+    </div>
+    <pre id="businessActionResult">جاهز لتسجيل عملية آمنة.</pre>
+  </section>
+
+  <section>
+    <h2>العملاء المحتملون</h2>
+    <div id="leadList">جاري التحميل...</div>
+  </section>
+
+  <section>
+    <h2>الطلبات والفرص</h2>
+    <div class="form-grid">
+      <div><h3>الطلبات</h3><div id="orderList">جاري التحميل...</div></div>
+      <div><h3>الفرص</h3><div id="opportunityList">جاري التحميل...</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>تخطيط الإجراءات</h2>
+    <p class="small">أي إجراء مالي يعاد كـ approval_required ولا يتم تنفيذه تلقائيًا.</p>
+    <div class="form-grid">
+      <div><label>نوع الإجراء</label><select id="actionType"><option value="send_quote">إرسال عرض سعر — آمن</option><option value="follow_up">متابعة عميل — آمن</option><option value="collect_deposit">تحصيل عربون — يحتاج موافقة</option><option value="purchase_product">شراء منتج — يحتاج موافقة</option><option value="pay_supplier">دفع للمورد — يحتاج موافقة</option><option value="transfer_money">تحويل أموال — يحتاج موافقة</option></select></div>
+      <div><label>بيانات الإجراء</label><input id="actionPayload" value="{}" placeholder='{"leadId":"..."}'></div>
+    </div>
+    <button onclick="planBusinessAction()">تخطيط الإجراء</button>
+    <pre id="actionResult">لم يتم التخطيط بعد.</pre>
+  </section>
+
+  <section>
     <h2>حالة الأدوات</h2>
     <button id="verifyButton" onclick="verifyConnectors()">تحقق من الموصلات الآن</button>
     <pre id="connectors">جاري التحميل...</pre>
@@ -80,117 +143,45 @@
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>\"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
 }
-
 async function getJson(url, options = {}) {
   const response = await fetch(url, options);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
 }
-
+async function postJson(url, body) { return getJson(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
 function renderReadiness(data) {
-  const box = document.getElementById("readiness");
-  const blockers = Array.isArray(data.blockers) ? data.blockers : [];
+  const box = document.getElementById("readiness"); const blockers = Array.isArray(data.blockers) ? data.blockers : [];
   document.getElementById("blockerCount").textContent = blockers.length;
-  if (!blockers.length) {
-    box.innerHTML = '<div class="card ok"><strong>جاهز بالكامل</strong><p>لا توجد عوائق مسجلة.</p></div>';
-    return;
-  }
-  box.innerHTML = blockers.map((item, index) => `
-    <div class="blocker">
-      <strong>${index + 1}. ${escapeHtml(item.id)}</strong>
-      <p>${escapeHtml(item.action)}</p>
-    </div>
-  `).join("");
+  if (!blockers.length) { box.innerHTML = '<div class="card ok"><strong>جاهز بالكامل</strong><p>لا توجد عوائق مسجلة.</p></div>'; return; }
+  box.innerHTML = blockers.map((item, index) => `<div class="blocker"><strong>${index + 1}. ${escapeHtml(item.id)}</strong><p>${escapeHtml(item.action)}</p><span class="pill">${escapeHtml(item.status)}</span></div>`).join("");
 }
-
 function renderConnectors(connectors) {
   const entries = Object.entries(connectors || {}).filter(([key]) => key !== "summary" && key !== "persistence");
   const verifiedCount = entries.filter(([, item]) => ["verified", "deployed", "connected"].includes(item.status)).length;
-  document.getElementById("connected").textContent = verifiedCount;
-  document.getElementById("connectors").textContent = JSON.stringify(connectors, null, 2);
+  document.getElementById("connected").textContent = verifiedCount; document.getElementById("connectors").textContent = JSON.stringify(connectors, null, 2);
 }
-
 function renderBusiness(summary) {
-  const data = summary || {};
-  document.getElementById("businessCustomers").textContent = data.customers ?? 0;
-  document.getElementById("businessLeads").textContent = data.leads ?? 0;
-  document.getElementById("businessOrders").textContent = data.activeOrders ?? 0;
-  document.getElementById("businessDeposits").textContent = data.pendingDeposits ?? 0;
-  document.getElementById("businessOpportunities").textContent = data.opportunities ?? 0;
-  document.getElementById("businessHot").textContent = data.hotOpportunities ?? 0;
+  const data = summary || {}; document.getElementById("businessCustomers").textContent = data.customers ?? 0; document.getElementById("businessLeads").textContent = data.leads ?? 0; document.getElementById("businessOrders").textContent = data.activeOrders ?? 0; document.getElementById("businessDeposits").textContent = data.pendingDeposits ?? 0; document.getElementById("businessOpportunities").textContent = data.opportunities ?? 0; document.getElementById("businessHot").textContent = data.hotOpportunities ?? 0;
 }
-
+function renderCollections(leads, orders, opportunities) {
+  document.getElementById("leadList").innerHTML = leads.length ? leads.map(l => `<div class="item"><strong>${escapeHtml(l.name || "بدون اسم")}</strong><br>${escapeHtml(l.request)}<br><span class="pill">${escapeHtml(l.stage)}</span> <span class="small">${escapeHtml(l.id)}</span></div>`).join("") : "لا يوجد عملاء محتملون.";
+  document.getElementById("orderList").innerHTML = orders.length ? orders.map(o => `<div class="item"><strong>${escapeHtml(o.product)}</strong><br>السعر: ${escapeHtml(o.quotedPrice)} — العربون: ${escapeHtml(o.depositRequired)}<br><span class="pill">${escapeHtml(o.status)}</span></div>`).join("") : "لا توجد طلبات.";
+  document.getElementById("opportunityList").innerHTML = opportunities.length ? opportunities.map(o => `<div class="item"><strong>${escapeHtml(o.title)}</strong><br>${escapeHtml(o.description)}<br><span class="pill">Score ${escapeHtml(o.score)}</span> <span class="pill">${escapeHtml(o.status)}</span></div>`).join("") : "لا توجد فرص.";
+}
 async function refreshDashboard() {
-  const [state, connectors, jobs, readiness, businessSummary] = await Promise.all([
-    getJson("/api/state"), getJson("/api/connectors/status"), getJson("/api/jobs"), getJson("/api/readiness"), getJson("/api/business/summary")
-  ]);
-  document.getElementById("status").textContent = state.status === "running" ? "يعمل" : state.status;
-  document.getElementById("jobs").textContent = jobs.length;
-  renderConnectors(connectors);
-  renderReadiness(readiness);
-  renderBusiness(businessSummary);
-  document.getElementById("jobList").innerHTML = jobs.length ? jobs.map(job => `
-    <div class="card"><strong>${escapeHtml(job.title)}</strong><p>${escapeHtml(job.description)}</p><small>الحالة: ${escapeHtml(job.status)}</small></div>
-  `).join("") : "لا توجد مهام حاليًا.";
+  const [state, connectors, jobs, readiness, summary, leads, orders, opportunities] = await Promise.all([getJson("/api/state"), getJson("/api/connectors/status"), getJson("/api/jobs"), getJson("/api/readiness"), getJson("/api/business/summary"), getJson("/api/business/leads"), getJson("/api/business/orders"), getJson("/api/business/opportunities")]);
+  document.getElementById("status").textContent = state.status === "running" ? "يعمل" : state.status; document.getElementById("jobs").textContent = jobs.length; renderConnectors(connectors); renderReadiness(readiness); renderBusiness(summary); renderCollections(leads, orders, opportunities);
+  document.getElementById("jobList").innerHTML = jobs.length ? jobs.map(job => `<div class="card"><strong>${escapeHtml(job.title)}</strong><p>${escapeHtml(job.description)}</p><small>الحالة: ${escapeHtml(job.status)}</small></div>`).join("") : "لا توجد مهام حاليًا.";
 }
-
-async function runCycle() {
-  const button = document.getElementById("cycleButton");
-  button.disabled = true;
-  button.textContent = "جارٍ تشغيل الدورة...";
-  try {
-    const result = await getJson("/api/automation/cycle");
-    document.getElementById("cycleResult").textContent = JSON.stringify(result, null, 2);
-    await refreshDashboard();
-  } catch (error) {
-    document.getElementById("cycleResult").textContent = "تعذر تشغيل الدورة: " + error.message;
-  } finally {
-    button.disabled = false;
-    button.textContent = "تشغيل دورة الاستقلالية الآن";
-  }
-}
-
-async function checkReadiness() {
-  try {
-    const result = await getJson("/api/readiness");
-    renderReadiness(result);
-    document.getElementById("health").textContent = JSON.stringify(result, null, 2);
-  } catch (error) {
-    document.getElementById("health").textContent = "تعذر فحص الجاهزية: " + error.message;
-  }
-}
-
-async function verifyConnectors() {
-  const button = document.getElementById("verifyButton");
-  button.disabled = true;
-  button.textContent = "جارٍ التحقق...";
-  try {
-    const result = await getJson("/api/connectors/verify");
-    renderConnectors(result.results || result.connectors || {});
-    if (result.readiness) renderReadiness(result.readiness);
-    document.getElementById("health").textContent = JSON.stringify(result, null, 2);
-  } catch (error) {
-    document.getElementById("health").textContent = "تعذر التحقق من الموصلات: " + error.message;
-  } finally {
-    button.disabled = false;
-    button.textContent = "تحقق من الموصلات الآن";
-  }
-}
-
-async function loadDashboard() {
-  try { await refreshDashboard(); }
-  catch (error) { document.getElementById("health").textContent = "حدث خطأ في الاتصال بالنظام: " + error.message; }
-}
-
-async function checkHealth() {
-  try {
-    const result = await getJson("/health");
-    document.getElementById("health").textContent = JSON.stringify(result, null, 2);
-  } catch (error) {
-    document.getElementById("health").textContent = "تعذر فحص النظام: " + error.message;
-  }
-}
-
+async function runCycle() { const button = document.getElementById("cycleButton"); button.disabled = true; button.textContent = "جارٍ تشغيل الدورة..."; try { const result = await getJson("/api/automation/cycle"); document.getElementById("cycleResult").textContent = JSON.stringify(result, null, 2); await refreshDashboard(); } catch (error) { document.getElementById("cycleResult").textContent = "تعذر تشغيل الدورة: " + error.message; } finally { button.disabled = false; button.textContent = "تشغيل دورة الاستقلالية الآن"; } }
+async function createLead() { try { const result = await postJson("/api/business/leads", { name: document.getElementById("leadName").value, phone: document.getElementById("leadPhone").value, request: document.getElementById("leadRequest").value, budget: document.getElementById("leadBudget").value ? Number(document.getElementById("leadBudget").value) : null, source: document.getElementById("leadSource").value }); document.getElementById("businessActionResult").textContent = JSON.stringify(result, null, 2); await refreshDashboard(); } catch (e) { document.getElementById("businessActionResult").textContent = "تعذر حفظ العميل: " + e.message; } }
+async function createOpportunity() { try { const result = await postJson("/api/business/opportunities", { title: document.getElementById("oppTitle").value, description: document.getElementById("oppDescription").value, score: Number(document.getElementById("oppScore").value || 0), source: document.getElementById("oppSource").value }); document.getElementById("businessActionResult").textContent = JSON.stringify(result, null, 2); await refreshDashboard(); } catch (e) { document.getElementById("businessActionResult").textContent = "تعذر حفظ الفرصة: " + e.message; } }
+async function createOrder() { try { const result = await postJson("/api/business/orders", { leadId: document.getElementById("orderLeadId").value || null, product: document.getElementById("orderProduct").value, quotedPrice: document.getElementById("orderPrice").value ? Number(document.getElementById("orderPrice").value) : null, depositRequired: document.getElementById("orderDeposit").value ? Number(document.getElementById("orderDeposit").value) : null }); document.getElementById("businessActionResult").textContent = JSON.stringify(result, null, 2); await refreshDashboard(); } catch (e) { document.getElementById("businessActionResult").textContent = "تعذر إنشاء الطلب: " + e.message; } }
+async function planBusinessAction() { try { let payload = {}; const raw = document.getElementById("actionPayload").value.trim(); if (raw) payload = JSON.parse(raw); const result = await postJson("/api/business/actions/plan", { action: document.getElementById("actionType").value, payload }); document.getElementById("actionResult").textContent = JSON.stringify(result, null, 2); } catch (e) { document.getElementById("actionResult").textContent = "تعذر التخطيط: " + e.message; } }
+async function checkReadiness() { try { const result = await getJson("/api/readiness"); renderReadiness(result); document.getElementById("health").textContent = JSON.stringify(result, null, 2); } catch (error) { document.getElementById("health").textContent = "تعذر فحص الجاهزية: " + error.message; } }
+async function verifyConnectors() { const button = document.getElementById("verifyButton"); button.disabled = true; button.textContent = "جارٍ التحقق..."; try { const result = await getJson("/api/connectors/verify"); renderConnectors(result.results || result.connectors || {}); if (result.readiness) renderReadiness(result.readiness); document.getElementById("health").textContent = JSON.stringify(result, null, 2); } catch (error) { document.getElementById("health").textContent = "تعذر التحقق من الموصلات: " + error.message; } finally { button.disabled = false; button.textContent = "تحقق من الموصلات الآن"; } }
+async function loadDashboard() { try { await refreshDashboard(); } catch (error) { document.getElementById("health").textContent = "حدث خطأ في الاتصال بالنظام: " + error.message; } }
+async function checkHealth() { try { const result = await getJson("/health"); document.getElementById("health").textContent = JSON.stringify(result, null, 2); } catch (error) { document.getElementById("health").textContent = "تعذر فحص النظام: " + error.message; } }
 loadDashboard();
 </script>
 </body>
