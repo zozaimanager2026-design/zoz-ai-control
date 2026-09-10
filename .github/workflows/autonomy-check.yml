@@ -11,7 +11,7 @@ jobs:
   autonomy-check:
     runs-on: ubuntu-latest
     steps:
-      - name: Check production health and run autonomous cycle
+      - name: Check production health, business layer, and autonomous cycle
         run: |
           set -euo pipefail
           BASE_URL="https://zoz-ai-control.vercel.app"
@@ -21,6 +21,24 @@ jobs:
           echo "== Self test =="
           curl --fail --silent --show-error --max-time 30 "$BASE_URL/api/self-test" | tee /tmp/self-test.json
           echo
+          echo "== Business summary =="
+          curl --fail --silent --show-error --max-time 30 "$BASE_URL/api/business/summary" | tee /tmp/business.json
+          echo
+          echo "== Automation status =="
+          curl --fail --silent --show-error --max-time 30 "$BASE_URL/api/automation/status" | tee /tmp/automation.json
+          echo
+          echo "== Financial approval gate =="
+          curl --fail --silent --show-error --max-time 30 \
+            -X POST "$BASE_URL/api/business/actions/plan" \
+            -H 'Content-Type: application/json' \
+            -d '{"action":"collect_deposit","payload":{"amount":100}}' | tee /tmp/financial-gate.json
+          echo
+          echo "== Safe action planner =="
+          curl --fail --silent --show-error --max-time 30 \
+            -X POST "$BASE_URL/api/business/actions/plan" \
+            -H 'Content-Type: application/json' \
+            -d '{"action":"send_quote","payload":{"leadId":"ci-check"}}' | tee /tmp/safe-action.json
+          echo
           echo "== Autonomous cycle =="
           curl --fail --silent --show-error --max-time 180 "$BASE_URL/api/automation/cycle" | tee /tmp/cycle.json
           echo
@@ -28,7 +46,7 @@ jobs:
           curl --fail --silent --show-error --max-time 30 "$BASE_URL/api/readiness" | tee /tmp/readiness.json
           echo
 
-      - name: Validate autonomous core
+      - name: Validate autonomous core and safety boundaries
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -37,6 +55,10 @@ jobs:
 
           health = json.loads(Path('/tmp/health.json').read_text())
           self_test = json.loads(Path('/tmp/self-test.json').read_text())
+          business = json.loads(Path('/tmp/business.json').read_text())
+          automation = json.loads(Path('/tmp/automation.json').read_text())
+          financial = json.loads(Path('/tmp/financial-gate.json').read_text())
+          safe = json.loads(Path('/tmp/safe-action.json').read_text())
           cycle = json.loads(Path('/tmp/cycle.json').read_text())
           readiness = json.loads(Path('/tmp/readiness.json').read_text())
 
@@ -44,15 +66,27 @@ jobs:
               raise SystemExit('Production health check failed')
           if not self_test.get('ok'):
               raise SystemExit('ZOZ AI self-test reported failure')
+          if not isinstance(business, dict):
+              raise SystemExit('Business summary is not an object')
+          if not automation.get('financialApprovalRequired'):
+              raise SystemExit('Financial approval gate is not enabled')
+          if not automation.get('externalActionsAllowedOnlyForVerifiedConnectors'):
+              raise SystemExit('External connector safety rule is not enabled')
+          if financial.get('status') != 'approval_required':
+              raise SystemExit('Financial action was not blocked behind approval')
+          if safe.get('status') != 'ready':
+              raise SystemExit('Safe action planner did not return ready')
           if not cycle.get('ok'):
               raise SystemExit('ZOZ AI autonomous cycle reported failure')
 
           print('Autonomous core: healthy')
+          print('Business layer: healthy')
+          print('Financial gate: enforced')
+          print('Safe action planner: ready')
           print('Cycle completed:', cycle.get('completedAt'))
           print('Executed safe jobs:', len(cycle.get('executed', [])))
           print('Skipped/blocked jobs:', len(cycle.get('skipped', [])))
           print('Readiness:', readiness.get('ok'))
           print('Persistence:', readiness.get('persistence'))
-          print('Financial approval required:', readiness.get('financialApprovalRequired'))
           print('Blockers:', readiness.get('blockers', []))
           PY
