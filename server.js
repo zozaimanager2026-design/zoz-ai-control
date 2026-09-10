@@ -11,13 +11,18 @@ const ZOZ_NAME = process.env.ZOZ_NAME || "ZOZ AI";
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
+// Durable persistence is enabled only when both REST URL and token exist.
+// This prevents the dashboard from reporting a database as connected when
+// the application is still running in memory-only mode.
+const persistence = {
+  enabled: Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN),
+  key: process.env.ZOZ_STATE_KEY || "zoz-ai:state"
+};
+
 const connectorConfig = {
   github: { status: "connected", label: "GitHub" },
-  vercel: { status: process.env.VERCEL ? "deployed" : "needs_setup", label: "Vercel" },
-  database: {
-    status: process.env.DATABASE_URL || process.env.KV_REST_API_URL ? "connected" : "needs_setup",
-    label: "Database"
-  },
+  vercel: { status: "deployed", label: "Vercel" },
+  database: { status: persistence.enabled ? "connected" : "needs_setup", label: "Database" },
   whatsapp: { status: process.env.WHATSAPP_ACCESS_TOKEN ? "connected" : "needs_setup", label: "WhatsApp" },
   youtube: { status: process.env.YOUTUBE_ACCESS_TOKEN ? "connected" : "needs_setup", label: "YouTube" },
   tiktok: { status: process.env.TIKTOK_ACCESS_TOKEN ? "connected" : "needs_setup", label: "TikTok" },
@@ -34,11 +39,6 @@ const state = {
   connectors: connectorConfig
 };
 
-const persistence = {
-  enabled: Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN),
-  key: process.env.ZOZ_STATE_KEY || "zoz-ai:state"
-};
-
 async function kvGet(key) {
   if (!persistence.enabled) return null;
   const base = process.env.KV_REST_API_URL.replace(/\/$/, "");
@@ -52,10 +52,13 @@ async function kvGet(key) {
 async function kvSet(key, value) {
   if (!persistence.enabled) return null;
   const base = process.env.KV_REST_API_URL.replace(/\/$/, "");
-  const encodedValue = encodeURIComponent(JSON.stringify(value));
-  const response = await fetch(`${base}/set/${encodeURIComponent(key)}/${encodedValue}`, {
+  const response = await fetch(`${base}/set/${encodeURIComponent(key)}`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
+    headers: {
+      Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(value)
   });
   if (!response.ok) throw new Error(`Persistence SET failed: ${response.status}`);
   return response.json().catch(() => null);
@@ -96,6 +99,42 @@ function isFinanciallySensitive(text = "") {
   );
 }
 
+function readiness() {
+  const blockers = [];
+  if (!persistence.enabled) {
+    blockers.push({
+      id: "database",
+      status: "needs_setup",
+      action: "إضافة KV_REST_API_URL وKV_REST_API_TOKEN إلى Production Environment Variables"
+    });
+  }
+
+  for (const [key, label] of [
+    ["whatsapp", "WhatsApp"],
+    ["youtube", "YouTube"],
+    ["tiktok", "TikTok"],
+    ["linkedin", "LinkedIn"],
+    ["shopify", "Shopify"]
+  ]) {
+    if (state.connectors[key].status === "needs_setup") {
+      blockers.push({
+        id: key,
+        status: "needs_setup",
+        action: `إكمال اعتماد ${label} قبل تشغيله آليًا`
+      });
+    }
+  }
+
+  return {
+    ok: blockers.length === 0,
+    service: ZOZ_NAME,
+    core: "healthy",
+    persistence: persistence.enabled ? "enabled" : "memory_only",
+    financialApprovalRequired: true,
+    blockers
+  };
+}
+
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
@@ -114,6 +153,10 @@ app.get("/api/state", (req, res) => {
       provider: persistence.enabled ? "KV-compatible REST" : "memory"
     }
   });
+});
+
+app.get("/api/readiness", (req, res) => {
+  res.json(readiness());
 });
 
 app.get("/api/jobs", (req, res) => {
@@ -190,7 +233,7 @@ app.get("/api/connectors/requirements", (req, res) => {
   res.json({
     github: "متصل عبر GitHub Connector",
     vercel: "النظام منشور على Vercel؛ ربط Vercel MCP داخل ChatGPT منفصل عن نشر الموقع",
-    database: "DATABASE_URL أو KV_REST_API_URL + KV_REST_API_TOKEN",
+    database: "KV_REST_API_URL + KV_REST_API_TOKEN",
     whatsapp: "WHATSAPP_ACCESS_TOKEN",
     youtube: "YOUTUBE_ACCESS_TOKEN",
     tiktok: "TIKTOK_ACCESS_TOKEN",
