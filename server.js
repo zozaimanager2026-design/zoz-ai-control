@@ -39,23 +39,25 @@ const persistence = {
   key: process.env.ZOZ_STATE_KEY || "zoz-ai:state"
 };
 
-async function kvRequest(method, key, body) {
+async function kvGet(key) {
   if (!persistence.enabled) return null;
-
-  const url = `${process.env.KV_REST_API_URL.replace(/\/$/, "")}/${encodeURIComponent(key)}`;
-  const response = await fetch(url, {
-    method,
-    headers: {
-      Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`,
-      "Content-Type": "application/json"
-    },
-    body: body === undefined ? undefined : JSON.stringify(body)
+  const base = process.env.KV_REST_API_URL.replace(/\/$/, "");
+  const response = await fetch(`${base}/get/${encodeURIComponent(key)}`, {
+    headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
   });
+  if (!response.ok) throw new Error(`Persistence GET failed: ${response.status}`);
+  return response.json();
+}
 
-  if (!response.ok) {
-    throw new Error(`Persistence request failed: ${response.status}`);
-  }
-
+async function kvSet(key, value) {
+  if (!persistence.enabled) return null;
+  const base = process.env.KV_REST_API_URL.replace(/\/$/, "");
+  const encodedValue = encodeURIComponent(JSON.stringify(value));
+  const response = await fetch(`${base}/set/${encodeURIComponent(key)}/${encodedValue}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
+  });
+  if (!response.ok) throw new Error(`Persistence SET failed: ${response.status}`);
   return response.json().catch(() => null);
 }
 
@@ -63,7 +65,7 @@ async function loadState() {
   if (!persistence.enabled) return;
 
   try {
-    const result = await kvRequest("GET", persistence.key);
+    const result = await kvGet(persistence.key);
     if (result && result.result) {
       const saved = typeof result.result === "string" ? JSON.parse(result.result) : result.result;
       if (saved && typeof saved === "object") {
@@ -79,7 +81,7 @@ async function saveState() {
   if (!persistence.enabled) return;
 
   try {
-    await kvRequest("PUT", persistence.key, {
+    await kvSet(persistence.key, {
       ...state,
       savedAt: new Date().toISOString()
     });
@@ -126,7 +128,6 @@ app.post("/api/jobs", async (req, res) => {
   }
 
   const financial = isFinanciallySensitive(`${title} ${description}`);
-
   const job = {
     id: Date.now().toString(),
     title,
@@ -143,7 +144,6 @@ app.post("/api/jobs", async (req, res) => {
 
 app.post("/api/jobs/:id/approve", async (req, res) => {
   const job = state.jobs.find((item) => item.id === req.params.id);
-
   if (!job) return res.status(404).json({ error: "المهمة غير موجودة" });
 
   job.status = "approved";
@@ -154,7 +154,6 @@ app.post("/api/jobs/:id/approve", async (req, res) => {
 
 app.post("/api/jobs/:id/reject", async (req, res) => {
   const job = state.jobs.find((item) => item.id === req.params.id);
-
   if (!job) return res.status(404).json({ error: "المهمة غير موجودة" });
 
   job.status = "rejected";
@@ -165,7 +164,6 @@ app.post("/api/jobs/:id/reject", async (req, res) => {
 
 app.post("/api/replies/preview", (req, res) => {
   const { text = "" } = req.body;
-
   res.json({
     text,
     financialApprovalRequired: isFinanciallySensitive(text),
