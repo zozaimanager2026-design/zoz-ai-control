@@ -7,25 +7,12 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const ZOZ_NAME = process.env.ZOZ_NAME || "ZOZ AI";
-
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// Durable persistence is enabled only when both REST URL and token exist.
 const persistence = {
   enabled: Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN),
   key: process.env.ZOZ_STATE_KEY || "zoz-ai:state"
-};
-
-const connectorConfig = {
-  github: { status: "connected", label: "GitHub", automation: "ready" },
-  vercel: { status: "deployed", label: "Vercel", automation: "deployment_verified" },
-  database: { status: persistence.enabled ? "connected" : "needs_setup", label: "Database", automation: persistence.enabled ? "ready" : "waiting_for_credentials" },
-  whatsapp: { status: process.env.WHATSAPP_ACCESS_TOKEN ? "connected" : "needs_setup", label: "WhatsApp", automation: process.env.WHATSAPP_ACCESS_TOKEN ? "ready" : "waiting_for_credentials" },
-  youtube: { status: process.env.YOUTUBE_ACCESS_TOKEN ? "connected" : "needs_setup", label: "YouTube", automation: process.env.YOUTUBE_ACCESS_TOKEN ? "ready" : "waiting_for_credentials" },
-  tiktok: { status: process.env.TIKTOK_ACCESS_TOKEN ? "connected" : "needs_setup", label: "TikTok", automation: process.env.TIKTOK_ACCESS_TOKEN ? "ready" : "waiting_for_credentials" },
-  linkedin: { status: process.env.LINKEDIN_ACCESS_TOKEN ? "connected" : "needs_setup", label: "LinkedIn", automation: process.env.LINKEDIN_ACCESS_TOKEN ? "ready" : "waiting_for_credentials" },
-  shopify: { status: process.env.SHOPIFY_ACCESS_TOKEN ? "connected" : "needs_setup", label: "Shopify", automation: process.env.SHOPIFY_ACCESS_TOKEN ? "ready" : "waiting_for_credentials" }
 };
 
 const state = {
@@ -35,43 +22,53 @@ const state = {
   financialApprovalRequired: true,
   jobs: [],
   audit: [],
-  connectors: connectorConfig
+  connectors: {
+    github: { status: "connected", label: "GitHub", automation: "ready" },
+    vercel: { status: "deployed", label: "Vercel", automation: "deployment_verified" },
+    database: { status: persistence.enabled ? "configured_unverified" : "needs_setup", label: "Database", automation: "verification_required" },
+    whatsapp: { status: process.env.WHATSAPP_ACCESS_TOKEN ? "configured_unverified" : "needs_setup", label: "WhatsApp", automation: "verification_required" },
+    youtube: { status: process.env.YOUTUBE_ACCESS_TOKEN ? "configured_unverified" : "needs_setup", label: "YouTube", automation: "verification_required" },
+    tiktok: { status: process.env.TIKTOK_ACCESS_TOKEN ? "configured_unverified" : "needs_setup", label: "TikTok", automation: "verification_required" },
+    linkedin: { status: process.env.LINKEDIN_ACCESS_TOKEN ? "configured_unverified" : "needs_setup", label: "LinkedIn", automation: "verification_required" },
+    shopify: { status: process.env.SHOPIFY_ACCESS_TOKEN ? "configured_unverified" : "needs_setup", label: "Shopify", automation: "verification_required" }
+  }
 };
 
 function audit(event, details = {}) {
-  state.audit.push({
-    id: Date.now().toString() + "-" + state.audit.length,
-    event,
-    details,
-    at: new Date().toISOString()
-  });
-  // Keep the in-memory audit bounded so a long-running process cannot grow forever.
+  state.audit.push({ id: `${Date.now()}-${state.audit.length}`, event, details, at: new Date().toISOString() });
   if (state.audit.length > 500) state.audit.splice(0, state.audit.length - 500);
+}
+
+async function fetchJson(url, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    const text = await response.text();
+    let body = null;
+    try { body = text ? JSON.parse(text) : null; } catch { body = { text: text.slice(0, 300) }; }
+    return { ok: response.ok, status: response.status, body };
+  } finally { clearTimeout(timer); }
 }
 
 async function kvGet(key) {
   if (!persistence.enabled) return null;
   const base = process.env.KV_REST_API_URL.replace(/\/$/, "");
-  const response = await fetch(`${base}/get/${encodeURIComponent(key)}`, {
-    headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` }
-  });
+  const response = await fetchJson(`${base}/get/${encodeURIComponent(key)}`, { headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` } });
   if (!response.ok) throw new Error(`Persistence GET failed: ${response.status}`);
-  return response.json();
+  return response.body;
 }
 
 async function kvSet(key, value) {
   if (!persistence.enabled) return null;
   const base = process.env.KV_REST_API_URL.replace(/\/$/, "");
-  const response = await fetch(`${base}/set/${encodeURIComponent(key)}`, {
+  const response = await fetchJson(`${base}/set/${encodeURIComponent(key)}`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`,
-      "Content-Type": "application/json"
-    },
+    headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`, "Content-Type": "application/json" },
     body: JSON.stringify(value)
   });
   if (!response.ok) throw new Error(`Persistence SET failed: ${response.status}`);
-  return response.json().catch(() => null);
+  return response.body;
 }
 
 async function loadState() {
@@ -93,43 +90,69 @@ async function loadState() {
 
 async function saveState() {
   if (!persistence.enabled) return;
-  try {
-    await kvSet(persistence.key, { ...state, savedAt: new Date().toISOString() });
-  } catch (error) {
-    console.error("State save warning:", error.message);
-  }
+  try { await kvSet(persistence.key, { ...state, savedAt: new Date().toISOString() }); }
+  catch (error) { console.error("State save warning:", error.message); }
 }
 
 function isFinanciallySensitive(text = "") {
   return /دفع|شراء|تحويل|سحب|استلام أموال|استلام اموال|بنك|بطاقة|bank|card|payment|purchase|transfer|withdraw/i.test(text);
 }
 
+async function verifyConnector(id) {
+  try {
+    let result;
+    if (id === "database") {
+      if (!persistence.enabled) return { id, status: "needs_setup", verified: false, reason: "KV credentials missing" };
+      const data = await kvGet(persistence.key);
+      result = { id, status: "verified", verified: true, detail: "KV REST read succeeded", hasState: Boolean(data && data.result) };
+    } else if (id === "whatsapp") {
+      if (!process.env.WHATSAPP_ACCESS_TOKEN || !process.env.WHATSAPP_PHONE_NUMBER_ID) return { id, status: "needs_setup", verified: false, reason: "WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID missing" };
+      const r = await fetchJson(`https://graph.facebook.com/v23.0/${encodeURIComponent(process.env.WHATSAPP_PHONE_NUMBER_ID)}?fields=id,display_phone_number,verified_name`, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}` } });
+      result = { id, status: r.ok ? "verified" : "error", verified: r.ok, httpStatus: r.status, detail: r.ok ? "WhatsApp phone number verified" : "WhatsApp API rejected the credential" };
+    } else if (id === "youtube") {
+      if (!process.env.YOUTUBE_ACCESS_TOKEN) return { id, status: "needs_setup", verified: false, reason: "YOUTUBE_ACCESS_TOKEN missing" };
+      const r = await fetchJson("https://www.googleapis.com/youtube/v3/channels?part=id,snippet&mine=true", { headers: { Authorization: `Bearer ${process.env.YOUTUBE_ACCESS_TOKEN}` } });
+      result = { id, status: r.ok ? "verified" : "error", verified: r.ok, httpStatus: r.status, detail: r.ok ? "YouTube OAuth token accepted" : "YouTube API rejected the credential", channelCount: r.body?.pageInfo?.totalResults ?? null };
+    } else if (id === "tiktok") {
+      if (!process.env.TIKTOK_ACCESS_TOKEN) return { id, status: "needs_setup", verified: false, reason: "TIKTOK_ACCESS_TOKEN missing" };
+      const r = await fetchJson("https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name", { headers: { Authorization: `Bearer ${process.env.TIKTOK_ACCESS_TOKEN}` } });
+      result = { id, status: r.ok ? "verified" : "error", verified: r.ok, httpStatus: r.status, detail: r.ok ? "TikTok OAuth token accepted" : "TikTok API rejected the credential" };
+    } else if (id === "linkedin") {
+      if (!process.env.LINKEDIN_ACCESS_TOKEN) return { id, status: "needs_setup", verified: false, reason: "LINKEDIN_ACCESS_TOKEN missing" };
+      const r = await fetchJson("https://api.linkedin.com/v2/userinfo", { headers: { Authorization: `Bearer ${process.env.LINKEDIN_ACCESS_TOKEN}` } });
+      result = { id, status: r.ok ? "verified" : "error", verified: r.ok, httpStatus: r.status, detail: r.ok ? "LinkedIn OAuth token accepted" : "LinkedIn API rejected the credential" };
+    } else if (id === "shopify") {
+      if (!process.env.SHOPIFY_ACCESS_TOKEN || !process.env.SHOPIFY_STORE_DOMAIN) return { id, status: "needs_setup", verified: false, reason: "SHOPIFY_ACCESS_TOKEN or SHOPIFY_STORE_DOMAIN missing" };
+      const domain = process.env.SHOPIFY_STORE_DOMAIN.replace(/^https?:\/\//, "").replace(/\/$/, "");
+      const r = await fetchJson(`https://${domain}/admin/api/2026-07/shop.json`, { headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN, Accept: "application/json" } });
+      result = { id, status: r.ok ? "verified" : "error", verified: r.ok, httpStatus: r.status, detail: r.ok ? "Shopify Admin API accepted the credential" : "Shopify API rejected the credential" };
+    } else if (id === "github") {
+      result = { id, status: "verified", verified: true, detail: "Connected through GitHub integration" };
+    } else if (id === "vercel") {
+      result = { id, status: "verified", verified: true, detail: "Existing Vercel deployment is known" };
+    } else return { id, status: "unknown", verified: false, reason: "Unsupported connector" };
+
+    state.connectors[id].status = result.status;
+    state.connectors[id].automation = result.verified ? "ready" : "verification_failed";
+    audit("connector_verification", { id, status: result.status, verified: result.verified });
+    return result;
+  } catch (error) {
+    state.connectors[id].status = "error";
+    state.connectors[id].automation = "verification_failed";
+    audit("connector_verification_error", { id, message: error.message });
+    return { id, status: "error", verified: false, reason: error.name === "AbortError" ? "verification_timeout" : "verification_failed" };
+  }
+}
+
 function readiness() {
   const blockers = [];
-  if (!persistence.enabled) {
-    blockers.push({ id: "database", status: "needs_setup", priority: 1, owner: "user", action: "إضافة KV_REST_API_URL وKV_REST_API_TOKEN إلى Production Environment Variables" });
-  }
-  for (const [key, label] of [
-    ["whatsapp", "WhatsApp"],
-    ["youtube", "YouTube"],
-    ["tiktok", "TikTok"],
-    ["linkedin", "LinkedIn"],
-    ["shopify", "Shopify"]
-  ]) {
-    if (state.connectors[key].status === "needs_setup") {
-      blockers.push({ id: key, status: "needs_setup", priority: key === "whatsapp" ? 2 : 3, owner: "user", action: `إكمال اعتماد ${label} قبل تشغيله آليًا` });
+  for (const [id, connector] of Object.entries(state.connectors)) {
+    if (["needs_setup", "configured_unverified", "error"].includes(connector.status)) {
+      if (!["github", "vercel"].includes(id)) blockers.push({ id, status: connector.status, priority: id === "database" ? 1 : id === "whatsapp" ? 2 : 3, owner: "user", action: connector.status === "configured_unverified" ? `تشغيل التحقق الفعلي لـ ${connector.label}` : `إكمال اعتماد ${connector.label}` });
     }
   }
   blockers.sort((a, b) => a.priority - b.priority);
-  return {
-    ok: blockers.length === 0,
-    service: ZOZ_NAME,
-    core: "healthy",
-    persistence: persistence.enabled ? "enabled" : "memory_only",
-    financialApprovalRequired: true,
-    autonomy: true,
-    blockers
-  };
+  return { ok: blockers.length === 0, service: ZOZ_NAME, core: "healthy", persistence: persistence.enabled ? "enabled" : "memory_only", financialApprovalRequired: true, autonomy: true, blockers };
 }
 
 function executionPlan() {
@@ -138,16 +161,7 @@ function executionPlan() {
     service: ZOZ_NAME,
     mode: "ordered_execution",
     rule: "نفّذ تلقائيًا ما يمكن تنفيذه بأمان؛ أوقف فقط عند اعتماد/سر/قرار مالي مطلوب من المستخدم",
-    completed: [
-      "core_health",
-      "github_repository",
-      "vercel_deployment",
-      "readiness_dashboard",
-      "financial_approval_gate",
-      "safe_internal_execution",
-      "audit_log",
-      "connector_automation_matrix"
-    ],
+    completed: ["core_health", "github_repository", "vercel_deployment", "readiness_dashboard", "financial_approval_gate", "safe_internal_execution", "audit_log", "connector_automation_matrix", "real_connector_verification"],
     next: r.blockers.map((b, index) => ({ step: index + 1, ...b })),
     user_action_required: r.blockers.filter((b) => b.owner === "user").map((b) => b.id),
     financial_actions_blocked: true
@@ -157,142 +171,70 @@ function executionPlan() {
 function systemSelfTest() {
   const checks = [
     { id: "express", ok: Boolean(app && typeof app.get === "function") },
-    { id: "financial_gate", ok: isFinanciallySensitive("دفع 100 جنيه") === true && isFinanciallySensitive("إنشاء منشور") === false },
+    { id: "financial_gate", ok: isFinanciallySensitive("دفع 100 جنيه") && !isFinanciallySensitive("إنشاء منشور") },
     { id: "readiness", ok: readiness().core === "healthy" },
     { id: "job_store", ok: Array.isArray(state.jobs) },
     { id: "audit_store", ok: Array.isArray(state.audit) },
-    { id: "persistence_config", ok: !persistence.enabled || Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) }
+    { id: "persistence_config", ok: !persistence.enabled || Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) },
+    { id: "connector_verification_engine", ok: typeof verifyConnector === "function" }
   ];
-  return {
-    ok: checks.every((check) => check.ok),
-    checks,
-    testedAt: new Date().toISOString()
-  };
+  return { ok: checks.every((x) => x.ok), checks, testedAt: new Date().toISOString() };
 }
 
-app.get("/health", (req, res) => {
-  res.json({ ok: true, service: ZOZ_NAME, status: "healthy", persistence: persistence.enabled ? "enabled" : "memory_only", time: new Date().toISOString() });
-});
-
-app.get("/api/state", (req, res) => {
-  res.json({ ...state, persistence: { enabled: persistence.enabled, provider: persistence.enabled ? "KV-compatible REST" : "memory" } });
-});
-
+app.get("/health", (req, res) => res.json({ ok: true, service: ZOZ_NAME, status: "healthy", persistence: persistence.enabled ? "enabled" : "memory_only", time: new Date().toISOString() }));
+app.get("/api/state", (req, res) => res.json({ ...state, persistence: { enabled: persistence.enabled, provider: persistence.enabled ? "KV-compatible REST" : "memory" } }));
 app.get("/api/readiness", (req, res) => res.json(readiness()));
 app.get("/api/plan", (req, res) => res.json(executionPlan()));
 app.get("/api/self-test", (req, res) => res.json(systemSelfTest()));
 app.get("/api/audit", (req, res) => res.json({ events: state.audit.slice(-100) }));
-
 app.get("/api/jobs", (req, res) => res.json(state.jobs));
 
 app.post("/api/jobs", async (req, res) => {
   const { title, description = "" } = req.body;
   if (!title) return res.status(400).json({ error: "عنوان المهمة مطلوب" });
   const financial = isFinanciallySensitive(`${title} ${description}`);
-  const job = {
-    id: Date.now().toString(),
-    title,
-    description,
-    financial,
-    status: financial ? "approval_required" : "pending",
-    createdAt: new Date().toISOString()
-  };
-  state.jobs.push(job);
-  audit("job_created", { jobId: job.id, financial, status: job.status });
-  await saveState();
-  res.status(201).json(job);
+  const job = { id: Date.now().toString(), title, description, financial, status: financial ? "approval_required" : "pending", createdAt: new Date().toISOString() };
+  state.jobs.push(job); audit("job_created", { jobId: job.id, financial, status: job.status }); await saveState(); res.status(201).json(job);
 });
 
 app.post("/api/jobs/:id/approve", async (req, res) => {
-  const job = state.jobs.find((item) => item.id === req.params.id);
-  if (!job) return res.status(404).json({ error: "المهمة غير موجودة" });
-  job.status = "approved";
-  job.approvedAt = new Date().toISOString();
-  audit("job_approved", { jobId: job.id, financial: job.financial });
-  await saveState();
-  res.json(job);
+  const job = state.jobs.find((x) => x.id === req.params.id); if (!job) return res.status(404).json({ error: "المهمة غير موجودة" });
+  job.status = "approved"; job.approvedAt = new Date().toISOString(); audit("job_approved", { jobId: job.id, financial: job.financial }); await saveState(); res.json(job);
 });
-
 app.post("/api/jobs/:id/reject", async (req, res) => {
-  const job = state.jobs.find((item) => item.id === req.params.id);
-  if (!job) return res.status(404).json({ error: "المهمة غير موجودة" });
-  job.status = "rejected";
-  job.rejectedAt = new Date().toISOString();
-  audit("job_rejected", { jobId: job.id, financial: job.financial });
-  await saveState();
-  res.json(job);
+  const job = state.jobs.find((x) => x.id === req.params.id); if (!job) return res.status(404).json({ error: "المهمة غير موجودة" });
+  job.status = "rejected"; job.rejectedAt = new Date().toISOString(); audit("job_rejected", { jobId: job.id, financial: job.financial }); await saveState(); res.json(job);
 });
-
-// Safe internal execution marker. It never performs a payment, purchase,
-// transfer, withdrawal, or money-receiving action.
 app.post("/api/jobs/:id/execute", async (req, res) => {
-  const job = state.jobs.find((item) => item.id === req.params.id);
-  if (!job) return res.status(404).json({ error: "المهمة غير موجودة" });
-  if (job.financial) {
-    audit("financial_execution_blocked", { jobId: job.id });
-    await saveState();
-    return res.status(403).json({ error: "موافقة المستخدم مطلوبة قبل تنفيذ مهمة مالية", status: "approval_required" });
-  }
+  const job = state.jobs.find((x) => x.id === req.params.id); if (!job) return res.status(404).json({ error: "المهمة غير موجودة" });
+  if (job.financial) { audit("financial_execution_blocked", { jobId: job.id }); await saveState(); return res.status(403).json({ error: "موافقة المستخدم مطلوبة قبل تنفيذ مهمة مالية", status: "approval_required" }); }
   if (!["pending", "approved"].includes(job.status)) return res.status(409).json({ error: "المهمة ليست قابلة للتنفيذ", status: job.status });
-  job.status = "executed";
-  job.executedAt = new Date().toISOString();
-  job.executionMode = "safe_internal_marker";
-  audit("job_executed", { jobId: job.id, executionMode: job.executionMode });
-  await saveState();
+  job.status = "executed"; job.executedAt = new Date().toISOString(); job.executionMode = "safe_internal_marker"; audit("job_executed", { jobId: job.id, executionMode: job.executionMode }); await saveState();
   res.json({ ok: true, job, note: "تم تسجيل التنفيذ الداخلي فقط؛ لا يوجد إجراء مالي أو خارجي تلقائي هنا." });
 });
 
-app.post("/api/replies/preview", (req, res) => {
-  const { text = "" } = req.body;
-  res.json({ text, financialApprovalRequired: isFinanciallySensitive(text), ready: true });
-});
+app.post("/api/replies/preview", (req, res) => { const { text = "" } = req.body; res.json({ text, financialApprovalRequired: isFinanciallySensitive(text), ready: true }); });
 
 app.get("/api/connectors/status", (req, res) => {
-  res.json({
-    ...state.connectors,
-    summary: {
-      connected: Object.values(state.connectors).filter((x) => x.status === "connected").length,
-      deployed: Object.values(state.connectors).filter((x) => x.status === "deployed").length,
-      needsSetup: Object.values(state.connectors).filter((x) => x.status === "needs_setup").length
-    },
-    persistence: { enabled: persistence.enabled, provider: persistence.enabled ? "KV-compatible REST" : "memory" }
-  });
+  const values = Object.values(state.connectors);
+  res.json({ ...state.connectors, summary: { connected: values.filter((x) => x.status === "verified" || x.status === "connected").length, deployed: values.filter((x) => x.status === "deployed").length, configured: values.filter((x) => x.status === "configured_unverified").length, needsSetup: values.filter((x) => x.status === "needs_setup").length, errors: values.filter((x) => x.status === "error").length }, persistence: { enabled: persistence.enabled, provider: persistence.enabled ? "KV-compatible REST" : "memory" } });
 });
 
-app.get("/api/connectors/requirements", (req, res) => {
-  res.json({
-    github: "متصل عبر GitHub Connector",
-    vercel: "النظام منشور على Vercel؛ ربط Vercel MCP داخل ChatGPT منفصل عن نشر الموقع",
-    database: "KV_REST_API_URL + KV_REST_API_TOKEN",
-    whatsapp: "WHATSAPP_ACCESS_TOKEN",
-    youtube: "YOUTUBE_ACCESS_TOKEN",
-    tiktok: "TIKTOK_ACCESS_TOKEN",
-    linkedin: "LINKEDIN_ACCESS_TOKEN",
-    shopify: "SHOPIFY_ACCESS_TOKEN",
-    financialRule: "لا يتم الدفع أو الشراء أو التحويل أو استلام الأموال دون موافقة المستخدم"
-  });
+app.get("/api/connectors/requirements", (req, res) => res.json({ github: "متصل عبر GitHub Connector", vercel: "النظام منشور على Vercel", database: "KV_REST_API_URL + KV_REST_API_TOKEN", whatsapp: "WHATSAPP_ACCESS_TOKEN + WHATSAPP_PHONE_NUMBER_ID", youtube: "YOUTUBE_ACCESS_TOKEN عبر OAuth 2.0", tiktok: "TIKTOK_ACCESS_TOKEN عبر OAuth 2.0", linkedin: "LINKEDIN_ACCESS_TOKEN عبر OAuth 2.0", shopify: "SHOPIFY_ACCESS_TOKEN + SHOPIFY_STORE_DOMAIN", financialRule: "لا يتم الدفع أو الشراء أو التحويل أو استلام الأموال دون موافقة المستخدم" }));
+
+app.get("/api/connectors/verify", async (req, res) => {
+  const requested = req.query.id ? String(req.query.id).split(",").filter(Boolean) : Object.keys(state.connectors);
+  const results = [];
+  for (const id of requested) results.push(await verifyConnector(id));
+  await saveState();
+  res.json({ ok: results.every((x) => x.verified), results, readiness: readiness() });
 });
 
 app.get("/api/automation/status", (req, res) => {
-  const connectors = Object.entries(state.connectors).map(([id, connector]) => ({
-    id,
-    label: connector.label,
-    status: connector.status,
-    automation: connector.automation,
-    externallyExecutable: connector.status === "connected" && connector.automation === "ready"
-  }));
-  res.json({
-    mode: "safe_autonomy",
-    financialApprovalRequired: true,
-    externalActionsAllowedOnlyForConnectedConnectors: true,
-    connectors,
-    selfTest: systemSelfTest()
-  });
+  const connectors = Object.entries(state.connectors).map(([id, connector]) => ({ id, label: connector.label, status: connector.status, automation: connector.automation, externallyExecutable: connector.status === "verified" && connector.automation === "ready" }));
+  res.json({ mode: "safe_autonomy", financialApprovalRequired: true, externalActionsAllowedOnlyForVerifiedConnectors: true, connectors, selfTest: systemSelfTest() });
 });
 
 app.get("/{*splat}", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
-loadState().finally(() => {
-  audit("system_started", { persistence: persistence.enabled });
-  app.listen(PORT, () => console.log(`${ZOZ_NAME} running on port ${PORT}`));
-});
+loadState().finally(() => { audit("system_started", { persistence: persistence.enabled }); app.listen(PORT, () => console.log(`${ZOZ_NAME} running on port ${PORT}`)); });
