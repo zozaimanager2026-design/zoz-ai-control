@@ -7,9 +7,9 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 0; background: #f4f6f8; color: #222; }
     header { background: #111827; color: white; padding: 20px; text-align: center; }
-    main { max-width: 900px; margin: 20px auto; padding: 0 15px; }
-    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
-    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    main { max-width: 1000px; margin: 20px auto; padding: 0 15px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 15px; }
+    .card { background: white; padding: 18px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
     .number { font-size: 28px; font-weight: bold; }
     section { background: white; margin-top: 20px; padding: 20px; border-radius: 12px; }
     button { padding: 10px 16px; border: 0; border-radius: 8px; cursor: pointer; background: #111827; color: white; margin-left: 8px; margin-bottom: 8px; }
@@ -17,10 +17,14 @@
     pre { background: #f1f5f9; padding: 15px; overflow-x: auto; border-radius: 8px; white-space: pre-wrap; }
     .blocker { margin: 10px 0; padding: 12px; background: #fff7ed; border-radius: 8px; }
     .ok { background: #ecfdf5; }
+    .warning { background: #fff7ed; }
+    .business-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+    .business-item { background: #f8fafc; padding: 12px; border-radius: 8px; }
+    .small { font-size: 13px; color: #64748b; }
   </style>
 </head>
 <body>
-<header><h1>ZOZ AI</h1><p>لوحة التحكم المركزية</p></header>
+<header><h1>ZOZ AI</h1><p>لوحة التحكم المركزية — طبقة التشغيل والاستقلالية</p></header>
 <main>
   <div class="cards">
     <div class="card"><div>الحالة</div><div class="number" id="status">...</div></div>
@@ -28,6 +32,26 @@
     <div class="card"><div>الأدوات المتحققة</div><div class="number" id="connected">0</div></div>
     <div class="card"><div>العوائق</div><div class="number" id="blockerCount">...</div></div>
   </div>
+
+  <section>
+    <h2>التشغيل الذاتي</h2>
+    <p class="small">الدورة تنفذ الأعمال الداخلية الآمنة فقط، وتوقف أي إجراء مالي للموافقة البشرية.</p>
+    <button id="cycleButton" onclick="runCycle()">تشغيل دورة الاستقلالية الآن</button>
+    <pre id="cycleResult">لم يتم تشغيل الدورة يدويًا بعد.</pre>
+  </section>
+
+  <section>
+    <h2>إدارة الأعمال</h2>
+    <div class="business-grid">
+      <div class="business-item">العملاء<br><strong id="businessCustomers">0</strong></div>
+      <div class="business-item">العملاء المحتملون<br><strong id="businessLeads">0</strong></div>
+      <div class="business-item">الطلبات النشطة<br><strong id="businessOrders">0</strong></div>
+      <div class="business-item">دفعات معلقة<br><strong id="businessDeposits">0</strong></div>
+      <div class="business-item">الفرص<br><strong id="businessOpportunities">0</strong></div>
+      <div class="business-item">فرص ساخنة<br><strong id="businessHot">0</strong></div>
+    </div>
+    <p class="small">الشراء والتحصيل والتحويل واستلام الأموال تظل خلف بوابة موافقة المستخدم.</p>
+  </section>
 
   <section>
     <h2>حالة الأدوات</h2>
@@ -80,23 +104,50 @@ function renderReadiness(data) {
 }
 
 function renderConnectors(connectors) {
-  const entries = Object.entries(connectors || {});
+  const entries = Object.entries(connectors || {}).filter(([key]) => key !== "summary" && key !== "persistence");
   const verifiedCount = entries.filter(([, item]) => ["verified", "deployed", "connected"].includes(item.status)).length;
   document.getElementById("connected").textContent = verifiedCount;
   document.getElementById("connectors").textContent = JSON.stringify(connectors, null, 2);
 }
 
+function renderBusiness(summary) {
+  const data = summary || {};
+  document.getElementById("businessCustomers").textContent = data.customers ?? 0;
+  document.getElementById("businessLeads").textContent = data.leads ?? 0;
+  document.getElementById("businessOrders").textContent = data.activeOrders ?? 0;
+  document.getElementById("businessDeposits").textContent = data.pendingDeposits ?? 0;
+  document.getElementById("businessOpportunities").textContent = data.opportunities ?? 0;
+  document.getElementById("businessHot").textContent = data.hotOpportunities ?? 0;
+}
+
 async function refreshDashboard() {
-  const [state, connectors, jobs, readiness] = await Promise.all([
-    getJson("/api/state"), getJson("/api/connectors/status"), getJson("/api/jobs"), getJson("/api/readiness")
+  const [state, connectors, jobs, readiness, businessSummary] = await Promise.all([
+    getJson("/api/state"), getJson("/api/connectors/status"), getJson("/api/jobs"), getJson("/api/readiness"), getJson("/api/business/summary")
   ]);
   document.getElementById("status").textContent = state.status === "running" ? "يعمل" : state.status;
   document.getElementById("jobs").textContent = jobs.length;
   renderConnectors(connectors);
   renderReadiness(readiness);
+  renderBusiness(businessSummary);
   document.getElementById("jobList").innerHTML = jobs.length ? jobs.map(job => `
     <div class="card"><strong>${escapeHtml(job.title)}</strong><p>${escapeHtml(job.description)}</p><small>الحالة: ${escapeHtml(job.status)}</small></div>
   `).join("") : "لا توجد مهام حاليًا.";
+}
+
+async function runCycle() {
+  const button = document.getElementById("cycleButton");
+  button.disabled = true;
+  button.textContent = "جارٍ تشغيل الدورة...";
+  try {
+    const result = await getJson("/api/automation/cycle");
+    document.getElementById("cycleResult").textContent = JSON.stringify(result, null, 2);
+    await refreshDashboard();
+  } catch (error) {
+    document.getElementById("cycleResult").textContent = "تعذر تشغيل الدورة: " + error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = "تشغيل دورة الاستقلالية الآن";
+  }
 }
 
 async function checkReadiness() {
@@ -115,7 +166,7 @@ async function verifyConnectors() {
   button.textContent = "جارٍ التحقق...";
   try {
     const result = await getJson("/api/connectors/verify");
-    renderConnectors(result.connectors || result.results || {});
+    renderConnectors(result.results || result.connectors || {});
     if (result.readiness) renderReadiness(result.readiness);
     document.getElementById("health").textContent = JSON.stringify(result, null, 2);
   } catch (error) {
