@@ -175,7 +175,7 @@ function systemSelfTest() {
     { id: "business_module", ok: typeof business.businessSummary === "function" },
     { id: "persistence_config", ok: !persistence.enabled || Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) },
     { id: "connector_verification_engine", ok: typeof verifyConnector === "function" },
-    { id: "whatsapp_webhook_contract", ok: typeof process.env.WHATSAPP_VERIFY_TOKEN !== "undefined" },
+    { id: "whatsapp_webhook_contract", ok: typeof business.normalizeWhatsAppEvent === "function" && typeof business.upsertLeadFromWhatsApp === "function" },
     { id: "autonomous_cycle", ok: typeof runAutonomousCycle === "function" }
   ];
   return { ok: checks.every((x) => x.ok), checks, testedAt: new Date().toISOString() };
@@ -246,9 +246,27 @@ app.get("/api/whatsapp/webhook", (req, res) => {
 });
 app.post("/api/whatsapp/webhook", async (req, res) => {
   const body = req.body || {};
-  audit("whatsapp_webhook_received", { object: body.object || null, entries: Array.isArray(body.entry) ? body.entry.length : 0 });
+  const events = business.normalizeWhatsAppEvent(body);
+  let processed = 0;
+  for (const event of events) {
+    if (!event.from) continue;
+    const result = business.upsertLeadFromWhatsApp(state.business, {
+      phone: event.from,
+      name: event.name,
+      request: event.text
+    });
+    audit("whatsapp_lead_upserted", {
+      messageId: event.messageId,
+      customerId: result.customer.id,
+      leadId: result.lead.id,
+      created: result.created,
+      type: event.type
+    });
+    processed += 1;
+  }
+  audit("whatsapp_webhook_received", { object: body.object || null, entries: Array.isArray(body.entry) ? body.entry.length : 0, events: events.length, processed });
   await saveState();
-  res.sendStatus(200);
+  res.status(200).json({ ok: true, received: events.length, processed });
 });
 
 app.get("/api/automation/status", (req, res) => { const connectors = Object.entries(state.connectors).map(([id, connector]) => ({ id, label: connector.label, status: connector.status, automation: connector.automation, externallyExecutable: connector.status === "verified" && connector.automation === "ready" })); res.json({ mode: "safe_autonomy", financialApprovalRequired: true, externalActionsAllowedOnlyForVerifiedConnectors: true, autonomousCycleEndpoint: "/api/automation/cycle", connectors, selfTest: systemSelfTest(), business: business.businessSummary(state.business) }); });
