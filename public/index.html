@@ -4,102 +4,38 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ZOZ AI Control</title>
-
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      background: #f4f6f8;
-      color: #222;
-    }
-
-    header {
-      background: #111827;
-      color: white;
-      padding: 20px;
-      text-align: center;
-    }
-
-    main {
-      max-width: 900px;
-      margin: 20px auto;
-      padding: 0 15px;
-    }
-
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 15px;
-    }
-
-    .card {
-      background: white;
-      padding: 20px;
-      border-radius: 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.08);
-    }
-
-    .number {
-      font-size: 28px;
-      font-weight: bold;
-    }
-
-    section {
-      background: white;
-      margin-top: 20px;
-      padding: 20px;
-      border-radius: 12px;
-    }
-
-    button {
-      padding: 10px 16px;
-      border: 0;
-      border-radius: 8px;
-      cursor: pointer;
-      background: #111827;
-      color: white;
-    }
-
-    pre {
-      background: #f1f5f9;
-      padding: 15px;
-      overflow-x: auto;
-      border-radius: 8px;
-    }
+    body { font-family: Arial, sans-serif; margin: 0; background: #f4f6f8; color: #222; }
+    header { background: #111827; color: white; padding: 20px; text-align: center; }
+    main { max-width: 900px; margin: 20px auto; padding: 0 15px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
+    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    .number { font-size: 28px; font-weight: bold; }
+    section { background: white; margin-top: 20px; padding: 20px; border-radius: 12px; }
+    button { padding: 10px 16px; border: 0; border-radius: 8px; cursor: pointer; background: #111827; color: white; margin-left: 8px; margin-bottom: 8px; }
+    pre { background: #f1f5f9; padding: 15px; overflow-x: auto; border-radius: 8px; white-space: pre-wrap; }
+    .blocker { margin: 10px 0; padding: 12px; background: #fff7ed; border-radius: 8px; }
+    .ok { background: #ecfdf5; }
   </style>
 </head>
-
 <body>
-
-<header>
-  <h1>ZOZ AI</h1>
-  <p>لوحة التحكم المركزية</p>
-</header>
-
+<header><h1>ZOZ AI</h1><p>لوحة التحكم المركزية</p></header>
 <main>
-
   <div class="cards">
-
-    <div class="card">
-      <div>الحالة</div>
-      <div class="number" id="status">...</div>
-    </div>
-
-    <div class="card">
-      <div>المهام</div>
-      <div class="number" id="jobs">0</div>
-    </div>
-
-    <div class="card">
-      <div>الأدوات المتصلة</div>
-      <div class="number" id="connected">0</div>
-    </div>
-
+    <div class="card"><div>الحالة</div><div class="number" id="status">...</div></div>
+    <div class="card"><div>المهام</div><div class="number" id="jobs">0</div></div>
+    <div class="card"><div>الأدوات المتصلة</div><div class="number" id="connected">0</div></div>
+    <div class="card"><div>العوائق</div><div class="number" id="blockerCount">...</div></div>
   </div>
 
   <section>
     <h2>حالة الأدوات</h2>
     <pre id="connectors">جاري التحميل...</pre>
+  </section>
+
+  <section>
+    <h2>العوائق والخطوة التالية</h2>
+    <div id="readiness">جاري فحص الجاهزية...</div>
   </section>
 
   <section>
@@ -110,57 +46,76 @@
   <section>
     <h2>اختبار النظام</h2>
     <button onclick="checkHealth()">فحص ZOZ AI</button>
+    <button onclick="checkReadiness()">فحص الجاهزية</button>
     <pre id="health">لم يتم الفحص بعد.</pre>
   </section>
-
 </main>
-
 <script>
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>\"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+}
+
+async function getJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+function renderReadiness(data) {
+  const box = document.getElementById("readiness");
+  document.getElementById("blockerCount").textContent = data.blockers.length;
+  if (!data.blockers.length) {
+    box.innerHTML = '<div class="card ok"><strong>جاهز بالكامل</strong><p>لا توجد عوائق مسجلة.</p></div>';
+    return;
+  }
+  box.innerHTML = data.blockers.map((item, index) => `
+    <div class="blocker">
+      <strong>${index + 1}. ${escapeHtml(item.id)}</strong>
+      <p>${escapeHtml(item.action)}</p>
+    </div>
+  `).join("");
+}
+
+async function checkReadiness() {
+  try {
+    const result = await getJson("/api/readiness");
+    renderReadiness(result);
+    document.getElementById("health").textContent = JSON.stringify(result, null, 2);
+  } catch (error) {
+    document.getElementById("health").textContent = "تعذر فحص الجاهزية: " + error.message;
+  }
+}
+
 async function loadDashboard() {
   try {
-    const state = await fetch("/api/state").then(r => r.json());
-    const connectors = await fetch("/api/connectors/status").then(r => r.json());
-    const jobs = await fetch("/api/jobs").then(r => r.json());
-
-    document.getElementById("status").textContent =
-      state.status === "running" ? "يعمل" : state.status;
-
+    const [state, connectors, jobs, readiness] = await Promise.all([
+      getJson("/api/state"), getJson("/api/connectors/status"), getJson("/api/jobs"), getJson("/api/readiness")
+    ]);
+    document.getElementById("status").textContent = state.status === "running" ? "يعمل" : state.status;
     document.getElementById("jobs").textContent = jobs.length;
-
-    const connected = Object.values(connectors)
-      .filter(x => x.status === "connected").length;
-
-    document.getElementById("connected").textContent = connected;
-
-    document.getElementById("connectors").textContent =
-      JSON.stringify(connectors, null, 2);
-
+    document.getElementById("connected").textContent = Object.values(connectors).filter(x => x.status === "connected").length;
+    document.getElementById("connectors").textContent = JSON.stringify(connectors, null, 2);
+    renderReadiness(readiness);
     if (jobs.length) {
-      document.getElementById("jobList").innerHTML =
-        jobs.map(job => `
-          <div class="card">
-            <strong>${job.title}</strong>
-            <p>${job.description || ""}</p>
-            <small>الحالة: ${job.status}</small>
-          </div>
-        `).join("");
+      document.getElementById("jobList").innerHTML = jobs.map(job => `
+        <div class="card"><strong>${escapeHtml(job.title)}</strong><p>${escapeHtml(job.description)}</p><small>الحالة: ${escapeHtml(job.status)}</small></div>
+      `).join("");
     }
-
   } catch (error) {
-    document.getElementById("health").textContent =
-      "حدث خطأ في الاتصال بالنظام.";
+    document.getElementById("health").textContent = "حدث خطأ في الاتصال بالنظام: " + error.message;
   }
 }
 
 async function checkHealth() {
-  const result = await fetch("/health").then(r => r.json());
-
-  document.getElementById("health").textContent =
-    JSON.stringify(result, null, 2);
+  try {
+    const result = await getJson("/health");
+    document.getElementById("health").textContent = JSON.stringify(result, null, 2);
+  } catch (error) {
+    document.getElementById("health").textContent = "تعذر فحص النظام: " + error.message;
+  }
 }
 
 loadDashboard();
 </script>
-
 </body>
 </html>
