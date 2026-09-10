@@ -11,7 +11,7 @@ jobs:
   autonomy-check:
     runs-on: ubuntu-latest
     steps:
-      - name: Check production health
+      - name: Check production health and run autonomous cycle
         run: |
           set -euo pipefail
           BASE_URL="https://zoz-ai-control.vercel.app"
@@ -21,11 +21,11 @@ jobs:
           echo "== Self test =="
           curl --fail --silent --show-error --max-time 30 "$BASE_URL/api/self-test" | tee /tmp/self-test.json
           echo
-          echo "== Readiness =="
-          curl --fail --silent --show-error --max-time 30 "$BASE_URL/api/readiness" | tee /tmp/readiness.json
+          echo "== Autonomous cycle =="
+          curl --fail --silent --show-error --max-time 180 "$BASE_URL/api/automation/cycle" | tee /tmp/cycle.json
           echo
-          echo "== Connector verification =="
-          curl --fail --silent --show-error --max-time 120 "$BASE_URL/api/connectors/verify" | tee /tmp/connectors.json
+          echo "== Readiness after cycle =="
+          curl --fail --silent --show-error --max-time 30 "$BASE_URL/api/readiness" | tee /tmp/readiness.json
           echo
 
       - name: Validate autonomous core
@@ -37,18 +37,22 @@ jobs:
 
           health = json.loads(Path('/tmp/health.json').read_text())
           self_test = json.loads(Path('/tmp/self-test.json').read_text())
+          cycle = json.loads(Path('/tmp/cycle.json').read_text())
           readiness = json.loads(Path('/tmp/readiness.json').read_text())
-          connectors = json.loads(Path('/tmp/connectors.json').read_text())
 
           if not health.get('ok'):
               raise SystemExit('Production health check failed')
           if not self_test.get('ok'):
               raise SystemExit('ZOZ AI self-test reported failure')
+          if not cycle.get('ok'):
+              raise SystemExit('ZOZ AI autonomous cycle reported failure')
 
           print('Autonomous core: healthy')
+          print('Cycle completed:', cycle.get('completedAt'))
+          print('Executed safe jobs:', len(cycle.get('executed', [])))
+          print('Skipped/blocked jobs:', len(cycle.get('skipped', [])))
           print('Readiness:', readiness.get('ok'))
           print('Persistence:', readiness.get('persistence'))
           print('Financial approval required:', readiness.get('financialApprovalRequired'))
-          print('Connector verification completed:', len(connectors.get('results', [])))
           print('Blockers:', readiness.get('blockers', []))
           PY
