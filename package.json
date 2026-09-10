@@ -1,14 +1,17 @@
 {
   "name": "zoz-ai-control",
   "version": "1.0.0",
-  "description": "ZOZ AI — AI Business Operating System",
+  "private": true,
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --check server.js && node --check business.js && node business.test.js && node whatsapp_crm.test.js"
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20 <23"
   },
   "dependencies": {
-    "express": "^5.1.0",
-    "dotenv": "^17.2.1"
-  }
+    "express": "^5.1.0"
+  },
+  "devDependencies": {}
 }
