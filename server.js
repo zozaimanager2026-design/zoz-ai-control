@@ -8,6 +8,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const ZOZ_NAME = process.env.ZOZ_NAME || "ZOZ AI";
+const WHATSAPP_API_VERSION = process.env.WHATSAPP_API_VERSION || "v23.0";
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -28,7 +29,7 @@ const state = {
     github: { status: "connected", label: "GitHub", automation: "ready" },
     vercel: { status: "deployed", label: "Vercel", automation: "deployment_verified" },
     database: { status: persistence.enabled ? "configured_unverified" : "needs_setup", label: "Database", automation: "verification_required" },
-    whatsapp: { status: process.env.WHATSAPP_ACCESS_TOKEN ? "configured_unverified" : "needs_setup", label: "WhatsApp", automation: "verification_required" },
+    whatsapp: { status: process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID ? "configured_unverified" : "needs_setup", label: "WhatsApp", automation: "verification_required" },
     youtube: { status: process.env.YOUTUBE_ACCESS_TOKEN ? "configured_unverified" : "needs_setup", label: "YouTube", automation: "verification_required" },
     tiktok: { status: process.env.TIKTOK_ACCESS_TOKEN ? "configured_unverified" : "needs_setup", label: "TikTok", automation: "verification_required" },
     linkedin: { status: process.env.LINKEDIN_ACCESS_TOKEN ? "configured_unverified" : "needs_setup", label: "LinkedIn", automation: "verification_required" },
@@ -82,9 +83,7 @@ async function loadState() {
       if (saved && typeof saved === "object") {
         state.jobs = Array.isArray(saved.jobs) ? saved.jobs : [];
         state.audit = Array.isArray(saved.audit) ? saved.audit.slice(-500) : [];
-        if (saved.business && typeof saved.business === "object") {
-          state.business = { ...business.createBusinessState(), ...saved.business };
-        }
+        if (saved.business && typeof saved.business === "object") state.business = { ...business.createBusinessState(), ...saved.business };
       }
     }
   } catch (error) {
@@ -112,7 +111,7 @@ async function verifyConnector(id) {
       result = { id, status: "verified", verified: true, detail: "KV REST read succeeded", hasState: Boolean(data && data.result) };
     } else if (id === "whatsapp") {
       if (!process.env.WHATSAPP_ACCESS_TOKEN || !process.env.WHATSAPP_PHONE_NUMBER_ID) return { id, status: "needs_setup", verified: false, reason: "WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID missing" };
-      const r = await fetchJson(`https://graph.facebook.com/v23.0/${encodeURIComponent(process.env.WHATSAPP_PHONE_NUMBER_ID)}?fields=id,display_phone_number,verified_name`, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}` } });
+      const r = await fetchJson(`https://graph.facebook.com/${WHATSAPP_API_VERSION}/${encodeURIComponent(process.env.WHATSAPP_PHONE_NUMBER_ID)}?fields=id,display_phone_number,verified_name`, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}` } });
       result = { id, status: r.ok ? "verified" : "error", verified: r.ok, httpStatus: r.status, detail: r.ok ? "WhatsApp phone number verified" : "WhatsApp API rejected the credential" };
     } else if (id === "youtube") {
       if (!process.env.YOUTUBE_ACCESS_TOKEN) return { id, status: "needs_setup", verified: false, reason: "YOUTUBE_ACCESS_TOKEN missing" };
@@ -162,15 +161,7 @@ function readiness() {
 
 function executionPlan() {
   const r = readiness();
-  return {
-    service: ZOZ_NAME,
-    mode: "ordered_execution",
-    rule: "نفّذ تلقائيًا ما يمكن تنفيذه بأمان؛ أوقف فقط عند اعتماد/سر/قرار مالي مطلوب من المستخدم",
-    completed: ["core_health", "github_repository", "vercel_deployment", "readiness_dashboard", "financial_approval_gate", "safe_internal_execution", "audit_log", "connector_automation_matrix", "real_connector_verification", "autonomous_cycle", "business_domain_layer", "business_api"],
-    next: r.blockers.map((b, index) => ({ step: index + 1, ...b })),
-    user_action_required: r.blockers.filter((b) => b.owner === "user").map((b) => b.id),
-    financial_actions_blocked: true
-  };
+  return { service: ZOZ_NAME, mode: "ordered_execution", rule: "نفّذ تلقائيًا ما يمكن تنفيذه بأمان؛ أوقف فقط عند اعتماد/سر/قرار مالي مطلوب من المستخدم", completed: ["core_health", "github_repository", "vercel_deployment", "readiness_dashboard", "financial_approval_gate", "safe_internal_execution", "audit_log", "connector_automation_matrix", "real_connector_verification", "autonomous_cycle", "business_domain_layer", "business_api", "whatsapp_webhook_contract"], next: r.blockers.map((b, index) => ({ step: index + 1, ...b })), user_action_required: r.blockers.filter((b) => b.owner === "user").map((b) => b.id), financial_actions_blocked: true };
 }
 
 function systemSelfTest() {
@@ -184,6 +175,7 @@ function systemSelfTest() {
     { id: "business_module", ok: typeof business.businessSummary === "function" },
     { id: "persistence_config", ok: !persistence.enabled || Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) },
     { id: "connector_verification_engine", ok: typeof verifyConnector === "function" },
+    { id: "whatsapp_webhook_contract", ok: typeof process.env.WHATSAPP_VERIFY_TOKEN !== "undefined" },
     { id: "autonomous_cycle", ok: typeof runAutonomousCycle === "function" }
   ];
   return { ok: checks.every((x) => x.ok), checks, testedAt: new Date().toISOString() };
@@ -192,41 +184,22 @@ function systemSelfTest() {
 async function executeSafeJob(job) {
   if (!job || !["pending", "approved"].includes(job.status)) return { executed: false, reason: "not_runnable" };
   if (job.financial || isFinanciallySensitive(`${job.title} ${job.description}`)) {
-    job.financial = true;
-    job.status = "approval_required";
-    audit("financial_execution_blocked", { jobId: job.id });
-    return { executed: false, reason: "financial_approval_required" };
+    job.financial = true; job.status = "approval_required"; audit("financial_execution_blocked", { jobId: job.id }); return { executed: false, reason: "financial_approval_required" };
   }
-  job.status = "executed";
-  job.executedAt = new Date().toISOString();
-  job.execution = { mode: "safe_internal", result: "completed_without_external_financial_action" };
-  audit("job_auto_executed", { jobId: job.id, title: job.title });
-  return { executed: true, jobId: job.id };
+  job.status = "executed"; job.executedAt = new Date().toISOString(); job.execution = { mode: "safe_internal", result: "completed_without_external_financial_action" }; audit("job_auto_executed", { jobId: job.id, title: job.title }); return { executed: true, jobId: job.id };
 }
 
 async function runAutonomousCycle() {
   const startedAt = new Date().toISOString();
   audit("autonomy_cycle_started", { startedAt });
   const selfTest = systemSelfTest();
-  if (!selfTest.ok) {
-    audit("autonomy_cycle_blocked", { reason: "self_test_failed" });
-    return { ok: false, startedAt, selfTest, executed: [], blockers: [{ owner: "system", action: "repair_self_test" }] };
-  }
+  if (!selfTest.ok) { audit("autonomy_cycle_blocked", { reason: "self_test_failed" }); return { ok: false, startedAt, selfTest, executed: [], blockers: [{ owner: "system", action: "repair_self_test" }] }; }
   const verificationIds = Object.keys(state.connectors).filter((id) => !["github", "vercel"].includes(id) && ["configured_unverified", "error"].includes(state.connectors[id].status));
   const verification = [];
   for (const id of verificationIds) verification.push(await verifyConnector(id));
-  const executed = [];
-  const skipped = [];
-  for (const job of state.jobs) {
-    if (["pending", "approved"].includes(job.status)) {
-      const result = await executeSafeJob(job);
-      if (result.executed) executed.push(result);
-      else skipped.push({ jobId: job.id, reason: result.reason });
-    }
-  }
-  const r = readiness();
-  audit("autonomy_cycle_completed", { executed: executed.length, skipped: skipped.length, blockers: r.blockers.length });
-  await saveState();
+  const executed = [], skipped = [];
+  for (const job of state.jobs) if (["pending", "approved"].includes(job.status)) { const result = await executeSafeJob(job); if (result.executed) executed.push(result); else skipped.push({ jobId: job.id, reason: result.reason }); }
+  const r = readiness(); audit("autonomy_cycle_completed", { executed: executed.length, skipped: skipped.length, blockers: r.blockers.length }); await saveState();
   return { ok: true, startedAt, completedAt: new Date().toISOString(), selfTest, verification, executed, skipped, readiness: r };
 }
 
@@ -246,85 +219,41 @@ app.get("/api/business/products", (req, res) => res.json(state.business.products
 app.get("/api/business/suppliers", (req, res) => res.json(state.business.suppliers));
 app.get("/api/business/expenses", (req, res) => res.json(state.business.expenses));
 
-app.post("/api/business/leads", async (req, res) => {
-  const lead = business.addLead(state.business, req.body);
-  audit("business_lead_created", { leadId: lead.id });
-  await saveState();
-  res.status(201).json(lead);
-});
-app.post("/api/business/leads/:id/stage", async (req, res) => {
-  try {
-    const lead = business.moveLead(state.business, req.params.id, req.body.stage);
-    audit("business_lead_stage_changed", { leadId: lead.id, stage: lead.stage });
-    await saveState();
-    res.json(lead);
-  } catch (error) { res.status(400).json({ error: error.message }); }
-});
-app.post("/api/business/orders", async (req, res) => {
-  const order = business.createOrder(state.business, req.body);
-  audit("business_order_created", { orderId: order.id, financialApprovalRequired: true });
-  await saveState();
-  res.status(201).json(order);
-});
-app.post("/api/business/opportunities", async (req, res) => {
-  const opportunity = business.registerOpportunity(state.business, req.body);
-  audit("business_opportunity_registered", { opportunityId: opportunity.id, score: opportunity.score });
-  await saveState();
-  res.status(201).json(opportunity);
-});
+app.post("/api/business/leads", async (req, res) => { const lead = business.addLead(state.business, req.body); audit("business_lead_created", { leadId: lead.id }); await saveState(); res.status(201).json(lead); });
+app.post("/api/business/leads/:id/stage", async (req, res) => { try { const lead = business.moveLead(state.business, req.params.id, req.body.stage); audit("business_lead_stage_changed", { leadId: lead.id, stage: lead.stage }); await saveState(); res.json(lead); } catch (error) { res.status(400).json({ error: error.message }); } });
+app.post("/api/business/orders", async (req, res) => { const order = business.createOrder(state.business, req.body); audit("business_order_created", { orderId: order.id, financialApprovalRequired: true }); await saveState(); res.status(201).json(order); });
+app.post("/api/business/opportunities", async (req, res) => { const opportunity = business.registerOpportunity(state.business, req.body); audit("business_opportunity_registered", { opportunityId: opportunity.id, score: opportunity.score }); await saveState(); res.status(201).json(opportunity); });
 app.post("/api/business/actions/plan", (req, res) => res.json(business.planAction(req.body.action, req.body.payload)));
 
-app.post("/api/jobs", async (req, res) => {
-  const { title, description = "" } = req.body;
-  if (!title) return res.status(400).json({ error: "عنوان المهمة مطلوب" });
-  const financial = isFinanciallySensitive(`${title} ${description}`);
-  const job = { id: Date.now().toString(), title, description, financial, status: financial ? "approval_required" : "pending", createdAt: new Date().toISOString() };
-  state.jobs.push(job); audit("job_created", { jobId: job.id, financial, status: job.status }); await saveState(); res.status(201).json(job);
-});
-
-app.post("/api/jobs/:id/approve", async (req, res) => {
-  const job = state.jobs.find((x) => x.id === req.params.id); if (!job) return res.status(404).json({ error: "المهمة غير موجودة" });
-  job.status = "approved"; job.approvedAt = new Date().toISOString(); audit("job_approved", { jobId: job.id, financial: job.financial }); await saveState(); res.json(job);
-});
-app.post("/api/jobs/:id/reject", async (req, res) => {
-  const job = state.jobs.find((x) => x.id === req.params.id); if (!job) return res.status(404).json({ error: "المهمة غير موجودة" });
-  job.status = "rejected"; job.rejectedAt = new Date().toISOString(); audit("job_rejected", { jobId: job.id, financial: job.financial }); await saveState(); res.json(job);
-});
-app.post("/api/jobs/:id/execute", async (req, res) => {
-  const job = state.jobs.find((x) => x.id === req.params.id); if (!job) return res.status(404).json({ error: "المهمة غير موجودة" });
-  const result = await executeSafeJob(job);
-  if (result.reason === "financial_approval_required") { await saveState(); return res.status(403).json({ error: "موافقة المستخدم مطلوبة قبل تنفيذ مهمة مالية", status: "approval_required" }); }
-  if (!result.executed) return res.status(409).json({ error: "المهمة ليست قابلة للتنفيذ", status: job.status });
-  await saveState(); res.json({ ok: true, job, note: "تم تنفيذ المهمة الداخلية الآمنة فقط؛ لا يوجد إجراء مالي أو خارجي تلقائي هنا." });
-});
-
+app.post("/api/jobs", async (req, res) => { const { title, description = "" } = req.body; if (!title) return res.status(400).json({ error: "عنوان المهمة مطلوب" }); const financial = isFinanciallySensitive(`${title} ${description}`); const job = { id: Date.now().toString(), title, description, financial, status: financial ? "approval_required" : "pending", createdAt: new Date().toISOString() }; state.jobs.push(job); audit("job_created", { jobId: job.id, financial, status: job.status }); await saveState(); res.status(201).json(job); });
+app.post("/api/jobs/:id/approve", async (req, res) => { const job = state.jobs.find((x) => x.id === req.params.id); if (!job) return res.status(404).json({ error: "المهمة غير موجودة" }); job.status = "approved"; job.approvedAt = new Date().toISOString(); audit("job_approved", { jobId: job.id, financial: job.financial }); await saveState(); res.json(job); });
+app.post("/api/jobs/:id/reject", async (req, res) => { const job = state.jobs.find((x) => x.id === req.params.id); if (!job) return res.status(404).json({ error: "المهمة غير موجودة" }); job.status = "rejected"; job.rejectedAt = new Date().toISOString(); audit("job_rejected", { jobId: job.id, financial: job.financial }); await saveState(); res.json(job); });
+app.post("/api/jobs/:id/execute", async (req, res) => { const job = state.jobs.find((x) => x.id === req.params.id); if (!job) return res.status(404).json({ error: "المهمة غير موجودة" }); const result = await executeSafeJob(job); if (result.reason === "financial_approval_required") { await saveState(); return res.status(403).json({ error: "موافقة المستخدم مطلوبة قبل تنفيذ مهمة مالية", status: "approval_required" }); } if (!result.executed) return res.status(409).json({ error: "المهمة ليست قابلة للتنفيذ", status: job.status }); await saveState(); res.json({ ok: true, job, note: "تم تنفيذ المهمة الداخلية الآمنة فقط؛ لا يوجد إجراء مالي أو خارجي تلقائي هنا." }); });
 app.post("/api/replies/preview", (req, res) => { const { text = "" } = req.body; res.json({ text, financialApprovalRequired: isFinanciallySensitive(text), ready: true }); });
 
-app.get("/api/connectors/status", (req, res) => {
-  const values = Object.values(state.connectors);
-  res.json({ ...state.connectors, summary: { connected: values.filter((x) => x.status === "verified" || x.status === "connected").length, deployed: values.filter((x) => x.status === "deployed").length, configured: values.filter((x) => x.status === "configured_unverified").length, needsSetup: values.filter((x) => x.status === "needs_setup").length, errors: values.filter((x) => x.status === "error").length }, persistence: { enabled: persistence.enabled, provider: persistence.enabled ? "KV-compatible REST" : "memory" } });
+app.get("/api/connectors/status", (req, res) => { const values = Object.values(state.connectors); res.json({ ...state.connectors, summary: { connected: values.filter((x) => x.status === "verified" || x.status === "connected").length, deployed: values.filter((x) => x.status === "deployed").length, configured: values.filter((x) => x.status === "configured_unverified").length, needsSetup: values.filter((x) => x.status === "needs_setup").length, errors: values.filter((x) => x.status === "error").length }, persistence: { enabled: persistence.enabled, provider: persistence.enabled ? "KV-compatible REST" : "memory" } }); });
+app.get("/api/connectors/requirements", (req, res) => res.json({ github: "متصل عبر GitHub Connector", vercel: "النظام منشور على Vercel", database: "KV_REST_API_URL + KV_REST_API_TOKEN", whatsapp: "WHATSAPP_ACCESS_TOKEN + WHATSAPP_PHONE_NUMBER_ID + WHATSAPP_VERIFY_TOKEN", youtube: "YOUTUBE_ACCESS_TOKEN عبر OAuth 2.0", tiktok: "TIKTOK_ACCESS_TOKEN عبر OAuth 2.0", linkedin: "LINKEDIN_ACCESS_TOKEN عبر OAuth 2.0", shopify: "SHOPIFY_ACCESS_TOKEN + SHOPIFY_STORE_DOMAIN", financialRule: "لا يتم الدفع أو الشراء أو التحويل أو استلام الأموال دون موافقة المستخدم" }));
+app.get("/api/connectors/verify", async (req, res) => { const requested = req.query.id ? String(req.query.id).split(",").filter(Boolean) : Object.keys(state.connectors); const results = []; for (const id of requested) results.push(await verifyConnector(id)); await saveState(); res.json({ ok: results.every((x) => x.verified), results, readiness: readiness() }); });
+
+app.get("/api/whatsapp/webhook", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+  if (!process.env.WHATSAPP_VERIFY_TOKEN) return res.status(503).send("WHATSAPP_VERIFY_TOKEN not configured");
+  if (mode === "subscribe" && token === process.env.WHATSAPP_VERIFY_TOKEN) { audit("whatsapp_webhook_verified", {}); return res.status(200).send(challenge || ""); }
+  audit("whatsapp_webhook_verification_failed", { mode: mode || null });
+  return res.sendStatus(403);
 });
-
-app.get("/api/connectors/requirements", (req, res) => res.json({ github: "متصل عبر GitHub Connector", vercel: "النظام منشور على Vercel", database: "KV_REST_API_URL + KV_REST_API_TOKEN", whatsapp: "WHATSAPP_ACCESS_TOKEN + WHATSAPP_PHONE_NUMBER_ID", youtube: "YOUTUBE_ACCESS_TOKEN عبر OAuth 2.0", tiktok: "TIKTOK_ACCESS_TOKEN عبر OAuth 2.0", linkedin: "LINKEDIN_ACCESS_TOKEN عبر OAuth 2.0", shopify: "SHOPIFY_ACCESS_TOKEN + SHOPIFY_STORE_DOMAIN", financialRule: "لا يتم الدفع أو الشراء أو التحويل أو استلام الأموال دون موافقة المستخدم" }));
-
-app.get("/api/connectors/verify", async (req, res) => {
-  const requested = req.query.id ? String(req.query.id).split(",").filter(Boolean) : Object.keys(state.connectors);
-  const results = [];
-  for (const id of requested) results.push(await verifyConnector(id));
+app.post("/api/whatsapp/webhook", async (req, res) => {
+  const body = req.body || {};
+  audit("whatsapp_webhook_received", { object: body.object || null, entries: Array.isArray(body.entry) ? body.entry.length : 0 });
   await saveState();
-  res.json({ ok: results.every((x) => x.verified), results, readiness: readiness() });
+  res.sendStatus(200);
 });
 
-app.get("/api/automation/status", (req, res) => {
-  const connectors = Object.entries(state.connectors).map(([id, connector]) => ({ id, label: connector.label, status: connector.status, automation: connector.automation, externallyExecutable: connector.status === "verified" && connector.automation === "ready" }));
-  res.json({ mode: "safe_autonomy", financialApprovalRequired: true, externalActionsAllowedOnlyForVerifiedConnectors: true, autonomousCycleEndpoint: "/api/automation/cycle", connectors, selfTest: systemSelfTest(), business: business.businessSummary(state.business) });
-});
-
-app.get("/api/automation/cycle", async (req, res) => {
-  try { res.json(await runAutonomousCycle()); }
-  catch (error) { audit("autonomy_cycle_error", { message: error.message }); await saveState(); res.status(500).json({ ok: false, error: "autonomy_cycle_failed" }); }
-});
+app.get("/api/automation/status", (req, res) => { const connectors = Object.entries(state.connectors).map(([id, connector]) => ({ id, label: connector.label, status: connector.status, automation: connector.automation, externallyExecutable: connector.status === "verified" && connector.automation === "ready" })); res.json({ mode: "safe_autonomy", financialApprovalRequired: true, externalActionsAllowedOnlyForVerifiedConnectors: true, autonomousCycleEndpoint: "/api/automation/cycle", connectors, selfTest: systemSelfTest(), business: business.businessSummary(state.business) }); });
+app.get("/api/automation/cycle", async (req, res) => { try { res.json(await runAutonomousCycle()); } catch (error) { audit("autonomy_cycle_error", { message: error.message }); await saveState(); res.status(500).json({ ok: false, error: "autonomy_cycle_failed" }); } });
 
 app.get("/{*splat}", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
-loadState().finally(() => { audit("system_started", { persistence: persistence.enabled, autonomousCycle: true, businessLayer: true }); app.listen(PORT, () => console.log(`${ZOZ_NAME} running on port ${PORT}`)); });
+loadState().finally(() => { audit("system_started", { persistence: persistence.enabled, autonomousCycle: true, businessLayer: true, whatsappWebhook: true }); app.listen(PORT, () => console.log(`${ZOZ_NAME} running on port ${PORT}`)); });
