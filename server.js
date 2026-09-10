@@ -18,14 +18,14 @@ const persistence = {
 };
 
 const connectorConfig = {
-  github: { status: "connected", label: "GitHub" },
-  vercel: { status: "deployed", label: "Vercel" },
-  database: { status: persistence.enabled ? "connected" : "needs_setup", label: "Database" },
-  whatsapp: { status: process.env.WHATSAPP_ACCESS_TOKEN ? "connected" : "needs_setup", label: "WhatsApp" },
-  youtube: { status: process.env.YOUTUBE_ACCESS_TOKEN ? "connected" : "needs_setup", label: "YouTube" },
-  tiktok: { status: process.env.TIKTOK_ACCESS_TOKEN ? "connected" : "needs_setup", label: "TikTok" },
-  linkedin: { status: process.env.LINKEDIN_ACCESS_TOKEN ? "connected" : "needs_setup", label: "LinkedIn" },
-  shopify: { status: process.env.SHOPIFY_ACCESS_TOKEN ? "connected" : "needs_setup", label: "Shopify" }
+  github: { status: "connected", label: "GitHub", automation: "ready" },
+  vercel: { status: "deployed", label: "Vercel", automation: "deployment_verified" },
+  database: { status: persistence.enabled ? "connected" : "needs_setup", label: "Database", automation: persistence.enabled ? "ready" : "waiting_for_credentials" },
+  whatsapp: { status: process.env.WHATSAPP_ACCESS_TOKEN ? "connected" : "needs_setup", label: "WhatsApp", automation: process.env.WHATSAPP_ACCESS_TOKEN ? "ready" : "waiting_for_credentials" },
+  youtube: { status: process.env.YOUTUBE_ACCESS_TOKEN ? "connected" : "needs_setup", label: "YouTube", automation: process.env.YOUTUBE_ACCESS_TOKEN ? "ready" : "waiting_for_credentials" },
+  tiktok: { status: process.env.TIKTOK_ACCESS_TOKEN ? "connected" : "needs_setup", label: "TikTok", automation: process.env.TIKTOK_ACCESS_TOKEN ? "ready" : "waiting_for_credentials" },
+  linkedin: { status: process.env.LINKEDIN_ACCESS_TOKEN ? "connected" : "needs_setup", label: "LinkedIn", automation: process.env.LINKEDIN_ACCESS_TOKEN ? "ready" : "waiting_for_credentials" },
+  shopify: { status: process.env.SHOPIFY_ACCESS_TOKEN ? "connected" : "needs_setup", label: "Shopify", automation: process.env.SHOPIFY_ACCESS_TOKEN ? "ready" : "waiting_for_credentials" }
 };
 
 const state = {
@@ -34,8 +34,20 @@ const state = {
   autonomy: true,
   financialApprovalRequired: true,
   jobs: [],
+  audit: [],
   connectors: connectorConfig
 };
+
+function audit(event, details = {}) {
+  state.audit.push({
+    id: Date.now().toString() + "-" + state.audit.length,
+    event,
+    details,
+    at: new Date().toISOString()
+  });
+  // Keep the in-memory audit bounded so a long-running process cannot grow forever.
+  if (state.audit.length > 500) state.audit.splice(0, state.audit.length - 500);
+}
 
 async function kvGet(key) {
   if (!persistence.enabled) return null;
@@ -68,10 +80,14 @@ async function loadState() {
     const result = await kvGet(persistence.key);
     if (result && result.result) {
       const saved = typeof result.result === "string" ? JSON.parse(result.result) : result.result;
-      if (saved && typeof saved === "object") state.jobs = Array.isArray(saved.jobs) ? saved.jobs : [];
+      if (saved && typeof saved === "object") {
+        state.jobs = Array.isArray(saved.jobs) ? saved.jobs : [];
+        state.audit = Array.isArray(saved.audit) ? saved.audit.slice(-500) : [];
+      }
     }
   } catch (error) {
     console.error("State load warning:", error.message);
+    audit("persistence_load_failed", { message: error.message });
   }
 }
 
@@ -111,6 +127,7 @@ function readiness() {
     core: "healthy",
     persistence: persistence.enabled ? "enabled" : "memory_only",
     financialApprovalRequired: true,
+    autonomy: true,
     blockers
   };
 }
@@ -126,11 +143,30 @@ function executionPlan() {
       "github_repository",
       "vercel_deployment",
       "readiness_dashboard",
-      "financial_approval_gate"
+      "financial_approval_gate",
+      "safe_internal_execution",
+      "audit_log",
+      "connector_automation_matrix"
     ],
     next: r.blockers.map((b, index) => ({ step: index + 1, ...b })),
     user_action_required: r.blockers.filter((b) => b.owner === "user").map((b) => b.id),
     financial_actions_blocked: true
+  };
+}
+
+function systemSelfTest() {
+  const checks = [
+    { id: "express", ok: Boolean(app && typeof app.get === "function") },
+    { id: "financial_gate", ok: isFinanciallySensitive("دفع 100 جنيه") === true && isFinanciallySensitive("إنشاء منشور") === false },
+    { id: "readiness", ok: readiness().core === "healthy" },
+    { id: "job_store", ok: Array.isArray(state.jobs) },
+    { id: "audit_store", ok: Array.isArray(state.audit) },
+    { id: "persistence_config", ok: !persistence.enabled || Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) }
+  ];
+  return {
+    ok: checks.every((check) => check.ok),
+    checks,
+    testedAt: new Date().toISOString()
   };
 }
 
@@ -144,6 +180,8 @@ app.get("/api/state", (req, res) => {
 
 app.get("/api/readiness", (req, res) => res.json(readiness()));
 app.get("/api/plan", (req, res) => res.json(executionPlan()));
+app.get("/api/self-test", (req, res) => res.json(systemSelfTest()));
+app.get("/api/audit", (req, res) => res.json({ events: state.audit.slice(-100) }));
 
 app.get("/api/jobs", (req, res) => res.json(state.jobs));
 
@@ -160,6 +198,7 @@ app.post("/api/jobs", async (req, res) => {
     createdAt: new Date().toISOString()
   };
   state.jobs.push(job);
+  audit("job_created", { jobId: job.id, financial, status: job.status });
   await saveState();
   res.status(201).json(job);
 });
@@ -169,6 +208,7 @@ app.post("/api/jobs/:id/approve", async (req, res) => {
   if (!job) return res.status(404).json({ error: "المهمة غير موجودة" });
   job.status = "approved";
   job.approvedAt = new Date().toISOString();
+  audit("job_approved", { jobId: job.id, financial: job.financial });
   await saveState();
   res.json(job);
 });
@@ -178,6 +218,7 @@ app.post("/api/jobs/:id/reject", async (req, res) => {
   if (!job) return res.status(404).json({ error: "المهمة غير موجودة" });
   job.status = "rejected";
   job.rejectedAt = new Date().toISOString();
+  audit("job_rejected", { jobId: job.id, financial: job.financial });
   await saveState();
   res.json(job);
 });
@@ -187,11 +228,16 @@ app.post("/api/jobs/:id/reject", async (req, res) => {
 app.post("/api/jobs/:id/execute", async (req, res) => {
   const job = state.jobs.find((item) => item.id === req.params.id);
   if (!job) return res.status(404).json({ error: "المهمة غير موجودة" });
-  if (job.financial) return res.status(403).json({ error: "موافقة المستخدم مطلوبة قبل تنفيذ مهمة مالية", status: "approval_required" });
+  if (job.financial) {
+    audit("financial_execution_blocked", { jobId: job.id });
+    await saveState();
+    return res.status(403).json({ error: "موافقة المستخدم مطلوبة قبل تنفيذ مهمة مالية", status: "approval_required" });
+  }
   if (!["pending", "approved"].includes(job.status)) return res.status(409).json({ error: "المهمة ليست قابلة للتنفيذ", status: job.status });
   job.status = "executed";
   job.executedAt = new Date().toISOString();
   job.executionMode = "safe_internal_marker";
+  audit("job_executed", { jobId: job.id, executionMode: job.executionMode });
   await saveState();
   res.json({ ok: true, job, note: "تم تسجيل التنفيذ الداخلي فقط؛ لا يوجد إجراء مالي أو خارجي تلقائي هنا." });
 });
@@ -227,8 +273,26 @@ app.get("/api/connectors/requirements", (req, res) => {
   });
 });
 
+app.get("/api/automation/status", (req, res) => {
+  const connectors = Object.entries(state.connectors).map(([id, connector]) => ({
+    id,
+    label: connector.label,
+    status: connector.status,
+    automation: connector.automation,
+    externallyExecutable: connector.status === "connected" && connector.automation === "ready"
+  }));
+  res.json({
+    mode: "safe_autonomy",
+    financialApprovalRequired: true,
+    externalActionsAllowedOnlyForConnectedConnectors: true,
+    connectors,
+    selfTest: systemSelfTest()
+  });
+});
+
 app.get("/{*splat}", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
 loadState().finally(() => {
+  audit("system_started", { persistence: persistence.enabled });
   app.listen(PORT, () => console.log(`${ZOZ_NAME} running on port ${PORT}`));
 });
