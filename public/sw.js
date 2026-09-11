@@ -1,4 +1,4 @@
-const CACHE = 'zoz-ai-mobile-v5';
+const CACHE = 'zoz-ai-mobile-v6';
 const SHELL = ['/mobile.html', '/manifest.webmanifest', '/icon-192.svg', '/icon-512.svg', '/command-router.js'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -14,7 +14,7 @@ self.addEventListener('fetch', event => {
     event.respondWith(fetch(event.request, {cache:'no-store'}).then(async response => {
       try {
         const html = await response.text();
-        const injected = html.replace('</body>', '<script src="/command-router.js?v=5" defer></script></body>');
+        const injected = html.replace('</body>', '<script src="/command-router.js?v=6" defer></script></body>');
         const headers = new Headers(response.headers);
         headers.delete('content-encoding');
         headers.delete('content-length');
