@@ -5,10 +5,16 @@
 <meta name="theme-color" content="#0b1220"><meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest"><title>ZOZ AI Control</title>
 <style>
-*{box-sizing:border-box}html,body{margin:0;height:100%;background:#f1f5f9;font-family:Arial,sans-serif}body{display:flex;flex-direction:column;overflow:hidden}.top{background:#0b1220;color:#fff;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}.brand{font-weight:800;font-size:18px}.status{font-size:12px;background:#166534;padding:6px 9px;border-radius:999px}.frame{flex:1;border:0;width:100%;min-height:0;background:#fff}.bar{height:68px;background:#0b1220;color:#fff;display:grid;grid-template-columns:repeat(5,1fr);padding:7px 5px calc(7px + env(safe-area-inset-bottom));gap:3px}.bar button{border:0;background:transparent;color:#cbd5e1;font:inherit;font-size:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border-radius:10px}.bar button.active{background:#1e293b;color:#fff}.bar b{font-size:19px}.install{position:fixed;left:12px;right:12px;bottom:82px;background:#fff;border:1px solid #cbd5e1;border-radius:14px;padding:12px;box-shadow:0 8px 30px #0002;display:none;z-index:20}.install button{background:#0b1220;color:#fff;border:0;border-radius:9px;padding:10px 14px}.install .close{background:#e2e8f0;color:#111;margin-right:6px}.approval-panel{display:none;position:fixed;top:58px;left:10px;right:10px;max-height:48vh;overflow:auto;background:#fff;border:1px solid #cbd5e1;border-radius:14px;box-shadow:0 10px 35px #0003;z-index:15;padding:12px}.approval-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}.approval-head strong{font-size:16px}.approval-item{background:#f8fafc;border-radius:10px;padding:10px;margin:8px 0;border:1px solid #e2e8f0}.approval-item .title{font-weight:700}.approval-item .meta{font-size:12px;color:#64748b;margin:5px 0}.approval-item button{border:0;border-radius:8px;padding:8px 11px;margin-left:5px;margin-top:5px;font:inherit}.approve{background:#166534;color:#fff}.reject{background:#991b1b;color:#fff}.execute{background:#0b1220;color:#fff}.refresh{background:#e2e8f0;color:#111}.empty{color:#64748b;font-size:13px;padding:8px}.toast{position:fixed;left:12px;right:12px;bottom:78px;background:#0b1220;color:#fff;padding:10px 12px;border-radius:10px;display:none;z-index:30;font-size:13px}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:#f1f5f9;font-family:Arial,sans-serif}body{display:flex;flex-direction:column;overflow:hidden}.top{background:#0b1220;color:#fff;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}.brand{font-weight:800;font-size:18px}.status{font-size:12px;background:#166534;padding:6px 9px;border-radius:999px}.frame{flex:1;border:0;width:100%;min-height:0;background:#fff}.bar{height:68px;background:#0b1220;color:#fff;display:grid;grid-template-columns:repeat(5,1fr);padding:7px 5px calc(7px + env(safe-area-inset-bottom));gap:3px}.bar button{border:0;background:transparent;color:#cbd5e1;font:inherit;font-size:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border-radius:10px}.bar button.active{background:#1e293b;color:#fff}.bar b{font-size:19px}.install{position:fixed;left:12px;right:12px;bottom:82px;background:#fff;border:1px solid #cbd5e1;border-radius:14px;padding:12px;box-shadow:0 8px 30px #0002;display:none;z-index:40}.install button{background:#0b1220;color:#fff;border:0;border-radius:9px;padding:10px 14px}.install .close{background:#e2e8f0;color:#111;margin-right:6px}.approval-panel{display:none;position:fixed;top:58px;left:10px;right:10px;max-height:48vh;overflow:auto;background:#fff;border:1px solid #cbd5e1;border-radius:14px;box-shadow:0 10px 35px #0003;z-index:35;padding:12px}.approval-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}.approval-head strong{font-size:16px}.approval-item{background:#f8fafc;border-radius:10px;padding:10px;margin:8px 0;border:1px solid #e2e8f0}.approval-item .title{font-weight:700}.approval-item .meta{font-size:12px;color:#64748b;margin:5px 0}.approval-item button{border:0;border-radius:8px;padding:8px 11px;margin-left:5px;margin-top:5px;font:inherit}.approve{background:#166534;color:#fff}.reject{background:#991b1b;color:#fff}.execute{background:#0b1220;color:#fff}.refresh{background:#e2e8f0;color:#111}.empty{color:#64748b;font-size:13px;padding:8px}.toast{position:fixed;left:12px;right:12px;bottom:78px;background:#0b1220;color:#fff;padding:10px 12px;border-radius:10px;display:none;z-index:50;font-size:13px}.command-panel{position:fixed;left:10px;right:10px;bottom:82px;background:#fff;border:1px solid #cbd5e1;border-radius:16px;box-shadow:0 12px 40px #0003;z-index:30;padding:12px}.command-title{display:flex;align-items:center;justify-content:space-between;font-weight:800;margin-bottom:8px}.command-row{display:flex;gap:6px}.command-row input{flex:1;min-width:0;border:1px solid #94a3b8;border-radius:10px;padding:11px;font:inherit}.command-row button{border:0;border-radius:10px;padding:0 13px;font:inherit}.mic{background:#e2e8f0;color:#111}.send{background:#0b1220;color:#fff}.command-result{font-size:12px;color:#475569;margin-top:8px;min-height:18px}.command-help{font-size:11px;color:#64748b;margin-top:6px;line-height:1.5}
 </style></head>
 <body>
 <header class="top"><div class="brand">ZOZ AI Control</div><div class="status" id="status">جاري الاتصال…</div></header>
+<div class="command-panel">
+  <div class="command-title"><span>🎙️ مركز أوامر ZOZ AI</span><span id="listenState"></span></div>
+  <div class="command-row"><input id="commandInput" autocomplete="off" placeholder="اكتب أمراً أو اضغط 🎤 وتكلم…"><button class="mic" id="micBtn" title="أمر صوتي">🎤</button><button class="send" id="sendBtn">تنفيذ</button></div>
+  <div id="commandResult" class="command-result">جاهز للأوامر الآمنة والتحكم والموافقات.</div>
+  <div class="command-help">مثال: «افتح العملاء» • «اعرض الموافقات» • «اقبل المهمة JOB_ID» • «نفذ المهمة JOB_ID»</div>
+</div>
 <div class="approval-panel" id="approvalPanel">
   <div class="approval-head"><strong>مركز الموافقات والتحكم</strong><button class="refresh" onclick="loadApprovals()">تحديث</button></div>
   <div id="approvalList" class="empty">جاري تحميل الموافقات…</div>
@@ -28,13 +34,68 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catc
 const frame=document.getElementById('frame');
 const panel=document.getElementById('approvalPanel');
 const toast=document.getElementById('toast');
+const commandInput=document.getElementById('commandInput');
+const commandResult=document.getElementById('commandResult');
 function notify(text){toast.textContent=text;toast.style.display='block';clearTimeout(window.__toast);window.__toast=setTimeout(()=>toast.style.display='none',2500)}
+function result(text){commandResult.textContent=text}
 function scrollToSection(target){try{const doc=frame.contentDocument;const heads=[...doc.querySelectorAll('section h2')];const terms={leads:['العملاء المحتملون'],orders:['الطلبات والفرص'],blockers:['العوائق والخطوة التالية']};const h=heads.find(x=>(terms[target]||[]).some(t=>x.textContent.includes(t)));if(h){h.scrollIntoView({behavior:'smooth',block:'start'});return true}}catch(e){}return false}
 function go(name,btn){document.querySelectorAll('.bar button').forEach(x=>x.classList.remove('active'));btn.classList.add('active');if(name==='home'){frame.src='/';return}if(name==='social'){window.open('https://app.upload-post.com/dashboard','_blank','noopener');return}if(!scrollToSection(name)){setTimeout(()=>scrollToSection(name),500)}}
-async function loadApprovals(){try{const jobs=await fetch('/api/jobs').then(r=>r.json());const pending=jobs.filter(j=>['approval_required','approved'].includes(j.status));document.getElementById('approvalList').innerHTML=pending.length?pending.map(j=>{const safe=!j.financial;return `<div class="approval-item"><div class="title">${esc(j.title)}</div><div>${esc(j.description||'')}</div><div class="meta">الحالة: ${esc(j.status)} ${j.financial?'• إجراء مالي/حساس':''}</div>${j.status==='approval_required'?`<button class="approve" onclick="jobAction('${j.id}','approve')">✓ قبول</button><button class="reject" onclick="jobAction('${j.id}','reject')">✕ رفض</button>`:''}${j.status==='approved'?`<button class="execute" onclick="jobAction('${j.id}','execute')">▶ تنفيذ</button>`:''}</div>`}).join(''):'<div class="empty">لا توجد موافقات معلقة الآن.</div>'}catch(e){document.getElementById('approvalList').textContent='تعذر تحميل الموافقات';}}
-async function jobAction(id,action){try{const r=await fetch(`/api/jobs/${encodeURIComponent(id)}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const data=await r.json().catch(()=>({}));if(!r.ok){notify(data.error||'تعذر تنفيذ الأمر');return}notify(action==='approve'?'تم القبول':action==='reject'?'تم الرفض':data.note||'تم التنفيذ');await loadApprovals();}catch(e){notify('تعذر الاتصال بالنظام')}}
-function esc(v){return String(v??'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]))}
-window.addEventListener('message',e=>{if(e.origin!==location.origin)return;if(e.data?.type==='ZOZ_READY')document.getElementById('status').textContent='متصل'});
+async function loadApprovals(){try{const jobs=await fetch('/api/jobs').then(r=>r.json());const pending=jobs.filter(j=>['approval_required','approved'].includes(j.status));document.getElementById('approvalList').innerHTML=pending.length?pending.map(j=>`<div class="approval-item"><div class="title">${esc(j.title)}</div><div>${esc(j.description||'')}</div><div class="meta">الحالة: ${esc(j.status)} ${j.financial?'• إجراء مالي/حساس':''}</div>${j.status==='approval_required'?`<button class="approve" onclick="jobAction('${j.id}','approve')">✓ قبول</button><button class="reject" onclick="jobAction('${j.id}','reject')">✕ رفض</button>`:''}${j.status==='approved'?`<button class="execute" onclick="jobAction('${j.id}','execute')">▶ تنفيذ</button>`:''}</div>`).join(''):'<div class="empty">لا توجد موافقات معلقة الآن.</div>'}catch(e){document.getElementById('approvalList').textContent='تعذر تحميل الموافقات';}}
+async function jobAction(id,action){try{const r=await fetch(`/api/jobs/${encodeURIComponent(id)}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const data=await r.json().catch(()=>({}));if(!r.ok){notify(data.error||'تعذر تنفيذ الأمر');return}const msg=action==='approve'?'تم القبول':action==='reject'?'تم الرفض':data.note||'تم التنفيذ';notify(msg);result(msg);await loadApprovals();}catch(e){notify('تعذر الاتصال بالنظام')}}
+function esc(v){return String(v??'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));}
+function findJobId(text){const m=text.match(/(?:job|المهمة|وظيفة)\s*[:#]?\s*([A-Za-z0-9_-]+)/i);return m?m[1]:null}
+function frameReady(){return frame.contentDocument && frame.contentDocument.readyState!=='loading'}
+function clickFrameButton(fn){try{if(!frameReady())return false;const w=frame.contentWindow;if(typeof w[fn]==='function'){w[fn]();return true}}catch(e){}return false}
+function commandLocalFields(text){
+  const doc=frame.contentDocument;if(!doc)return false;
+  const t=text.replace(/[،,]/g,' ');
+  if(/سجل|أضف|اضف/.test(t)&&/عميل|مشتري|عميل محتمل/.test(t)){
+    const name=(t.match(/(?:اسم|الاسم)\s*[:=]?\s*([^\n]+?)(?=\s+(?:هاتف|رقم|طلب|جهاز|ميزانية|مصدر)\s*[:=]?|$)/i)||[])[1]||'';
+    const phone=(t.match(/(?:هاتف|رقم)\s*[:=]?\s*([+\d][\d\s-]{6,})/i)||[])[1]||'';
+    const request=(t.match(/(?:طلب|جهاز)\s*[:=]?\s*(.+?)(?=\s+(?:ميزانية|مصدر)\s*[:=]?|$)/i)||[])[1]||'';
+    const budget=(t.match(/ميزانية\s*[:=]?\s*(\d+(?:\.\d+)?)/i)||[])[1]||'';
+    const set=(id,v)=>{const el=doc.getElementById(id);if(el)el.value=v};
+    set('leadName',name.trim());set('leadPhone',phone.trim());set('leadRequest',request.trim());set('leadBudget',budget);set('leadSource','mobile-command');
+    const ok=clickFrameButton('createLead'); if(ok){result('تم إرسال بيانات العميل المحتمل من مركز الأوامر.');return true}
+  }
+  if(/سجل|أضف|اضف/.test(t)&&/فرصة/.test(t)){
+    const title=(t.match(/(?:عنوان|اسم)\s*[:=]?\s*(.+?)(?=\s+(?:وصف|درجة|score|مصدر)\s*[:=]?|$)/i)||[])[1]||'';
+    const description=(t.match(/(?:وصف|تفاصيل)\s*[:=]?\s*(.+?)(?=\s+(?:درجة|score|مصدر)\s*[:=]?|$)/i)||[])[1]||'';
+    const score=(t.match(/(?:درجة|score)\s*[:=]?\s*(\d+)/i)||[])[1]||'70';
+    const set=(id,v)=>{const el=doc.getElementById(id);if(el)el.value=v};set('oppTitle',title.trim());set('oppDescription',description.trim());set('oppScore',score);set('oppSource','mobile-command');
+    const ok=clickFrameButton('createOpportunity');if(ok){result('تم إرسال الفرصة للتسجيل.');return true}
+  }
+  if(/أنشئ|انشئ|سجل|أضف|اضف/.test(t)&&/طلب/.test(t)){
+    const product=(t.match(/(?:منتج|جهاز)\s*[:=]?\s*(.+?)(?=\s+(?:السعر|سعر|العربون|دفعة)\s*[:=]?|$)/i)||[])[1]||'';
+    const price=(t.match(/(?:السعر|سعر)\s*[:=]?\s*(\d+(?:\.\d+)?)/i)||[])[1]||'';
+    const deposit=(t.match(/(?:العربون|دفعة)\s*[:=]?\s*(\d+(?:\.\d+)?)/i)||[])[1]||'';
+    const set=(id,v)=>{const el=doc.getElementById(id);if(el)el.value=v};set('orderProduct',product.trim());set('orderPrice',price);set('orderDeposit',deposit);set('orderLeadId','');
+    const ok=clickFrameButton('createOrder');if(ok){result('تم إرسال الطلب إلى نظام المبيعات؛ أي إجراء مالي يظل خلف الموافقة.');return true}
+  }
+  return false;
+}
+async function executeCommand(raw){
+  const text=String(raw||'').trim();if(!text)return;
+  result('جاري فهم الأمر…');
+  if(/^(افتح|اذهب|انتقل).*?(العملاء|العملاء المحتملين|المشترين)/i.test(text)||/العملاء$/.test(text)){document.querySelectorAll('.bar button')[1].click();result('تم فتح قسم العملاء.');return}
+  if(/^(افتح|اذهب|انتقل).*?الطلبات/i.test(text)){document.querySelectorAll('.bar button')[2].click();result('تم فتح قسم الطلبات والفرص.');return}
+  if(/^(افتح|اذهب|انتقل).*?(السوشيال|السوشيال ميديا)/i.test(text)){document.querySelectorAll('.bar button')[3].click();result('تم فتح مركز السوشيال.');return}
+  if(/^(افتح|اذهب|انتقل).*?العوائق/i.test(text)){document.querySelectorAll('.bar button')[4].click();result('تم فتح قسم العوائق.');return}
+  if(/(اعرض|أظهر|اظهر|عرض).*(الموافقات|المهام المعلقة)/i.test(text)||/الموافقات/.test(text)){panel.style.display='block';await loadApprovals();result('تم عرض الموافقات الحالية.');return}
+  const id=findJobId(text);
+  if(id&&/(اقبل|وافق|قبول)/i.test(text)){await jobAction(id,'approve');return}
+  if(id&&/(ارفض|رفض)/i.test(text)){await jobAction(id,'reject');return}
+  if(id&&/(نفذ|تنفيذ|شغل|تشغيل)/i.test(text)){await jobAction(id,'execute');return}
+  if(/^(الحالة|حالة النظام|هل النظام يعمل)/i.test(text)){try{const r=await fetch('/api/readiness');const d=await r.json();result(`الحالة: ${d.core||'غير معروفة'} — الموافقات المعلقة: ${d.approvalsPending??0} — العوائق: ${(d.blockers||[]).length}`)}catch(e){result('تعذر فحص الحالة.')}return}
+  if(commandLocalFields(text))return;
+  if(/ابحث|بحث|مشترين|عملاء جدد/i.test(text)){document.querySelectorAll('.bar button')[1].click();result('تم تحويل الأمر إلى قسم العملاء. البحث الخارجي عن مشترين يحتاج محرك بحث/موصل بحث متصل؛ لم أختلق نتائج أو عملاء.');return}
+  result('الأمر غير معروف بعد. جرّب: «افتح العملاء»، «اعرض الموافقات»، «اقبل المهمة JOB_ID»، «نفذ المهمة JOB_ID»، أو «سجل عميل اسم:… طلب:… ميزانية:…».');
+}
+document.getElementById('sendBtn').onclick=()=>executeCommand(commandInput.value);
+commandInput.addEventListener('keydown',e=>{if(e.key==='Enter')executeCommand(commandInput.value)});
+const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;const micBtn=document.getElementById('micBtn');
+if(SpeechRecognition){const rec=new SpeechRecognition();rec.lang='ar-EG';rec.interimResults=false;rec.continuous=false;rec.onstart=()=>{document.getElementById('listenState').textContent='يستمع…';micBtn.textContent='⏹️'};rec.onend=()=>{document.getElementById('listenState').textContent='';micBtn.textContent='🎤'};rec.onerror=()=>{document.getElementById('listenState').textContent='تعذر الصوت';micBtn.textContent='🎤'};rec.onresult=e=>{const t=e.results?.[0]?.[0]?.transcript||'';commandInput.value=t;executeCommand(t)};micBtn.onclick=()=>{try{rec.start()}catch(e){}}}else{micBtn.disabled=true;micBtn.title='المتصفح لا يدعم الإدخال الصوتي'}
+window.addEventListener('message',e=>{if(e.origin!==location.origin&&e.origin!==window.location.origin)return;if(e.data?.type==='ZOZ_READY')document.getElementById('status').textContent='متصل'});
 let deferredPrompt=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;document.getElementById('install').style.display='block'});document.getElementById('installBtn').onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;document.getElementById('install').style.display='none'};
 fetch('/api/health').then(r=>{if(r.ok)document.getElementById('status').textContent='يعمل'}).catch(()=>document.getElementById('status').textContent='غير متصل');
 loadApprovals();setInterval(loadApprovals,15000);
