@@ -5,6 +5,7 @@ const {
   moveLead,
   createOrder,
   registerOpportunity,
+  normalizeBusinessAction,
   planAction,
   businessSummary
 } = require("./business");
@@ -39,8 +40,13 @@ const opportunity = registerOpportunity(state, {
 assert.equal(opportunity.status, "new");
 
 assert.equal(planAction("send_quote").status, "ready");
+assert.equal(planAction("send_quote").autoExecutable, true);
+assert.equal(planAction("إرسال عرض سعر").action, "send_quote");
+assert.equal(normalizeBusinessAction("متابعة العميل"), "follow_up");
 assert.equal(planAction("collect_deposit").status, "approval_required");
 assert.equal(planAction("collect_deposit").humanApprovalRequired, true);
+assert.equal(planAction("شراء منتج").action, "purchase_product");
+assert.equal(planAction("شراء منتج").autoExecutable, false);
 
 const summary = businessSummary(state);
 assert.equal(summary.leads, 1);
