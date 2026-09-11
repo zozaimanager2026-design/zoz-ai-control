@@ -29,6 +29,12 @@ jobs:
           curl --fail --silent --show-error --max-time 60 "$BASE_URL/api/readiness"
           echo
 
+          echo "== Mobile control surface =="
+          curl --fail --silent --show-error --max-time 60 "$BASE_URL/mobile.html" -o /tmp/mobile.html
+          grep -q "ZOZ AI Control" /tmp/mobile.html
+          grep -q "مركز الأوامر" /tmp/mobile.html
+          echo "Mobile control surface is deployed."
+
           echo "== Cron protection =="
           STATUS=$(curl --silent --show-error --max-time 60 -o /tmp/cycle.json -w '%{http_code}' "$BASE_URL/api/automation/cycle")
           cat /tmp/cycle.json
