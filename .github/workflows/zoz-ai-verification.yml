@@ -1,0 +1,66 @@
+name: ZOZ AI Verification
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  repository-verification:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run full repository tests
+        run: npm test
+      - name: Verify server starts and health endpoints respond
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT=3099 node server.js >/tmp/zoz-ai.log 2>&1 &
+          PID=$!
+          trap 'kill $PID 2>/dev/null || true' EXIT
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3099/api/health >/tmp/health.json; then break; fi
+            sleep 1
+          done
+          cat /tmp/health.json
+          curl -fsS http://127.0.0.1:3099/api/self-test
+          echo
+          curl -fsS http://127.0.0.1:3099/api/readiness
+          echo
+          STATUS=$(curl -sS -o /tmp/cycle.json -w '%{http_code}' http://127.0.0.1:3099/api/automation/cycle)
+          cat /tmp/cycle.json
+          echo
+          test "$STATUS" = "401"
+          echo "Local production-safety verification passed."
+
+  live-production-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check current production health
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL=https://zoz-ai-control.vercel.app
+          curl --fail --silent --show-error --max-time 30 "$BASE_URL/api/health"
+          echo
+          curl --fail --silent --show-error --max-time 30 "$BASE_URL/api/self-test"
+          echo
+          curl --fail --silent --show-error --max-time 30 "$BASE_URL/api/readiness"
+          echo
+          STATUS=$(curl --silent --show-error --max-time 30 -o /tmp/cycle.json -w '%{http_code}' "$BASE_URL/api/automation/cycle")
+          cat /tmp/cycle.json
+          echo
+          if [ "$STATUS" != "401" ] && [ "$STATUS" != "503" ]; then
+            echo "Production cron endpoint safety check failed with HTTP $STATUS."
+            exit 1
+          fi
+          echo "Live production safety boundary passed."
