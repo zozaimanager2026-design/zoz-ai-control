@@ -11,7 +11,7 @@ jobs:
   production-monitor:
     runs-on: ubuntu-latest
     steps:
-      - name: Check production health and safety boundary
+      - name: Check production health, business API and safety boundary
         env:
           BASE_URL: https://zoz-ai-control-production.up.railway.app
         run: |
@@ -27,6 +27,18 @@ jobs:
 
           echo "== Production readiness =="
           curl --fail --silent --show-error --max-time 60 "$BASE_URL/api/readiness"
+          echo
+
+          echo "== Business summary API =="
+          curl --fail --silent --show-error --max-time 60 "$BASE_URL/api/business/summary"
+          echo
+
+          echo "== Business customers API =="
+          curl --fail --silent --show-error --max-time 60 "$BASE_URL/api/business/customers"
+          echo
+
+          echo "== Business leads API =="
+          curl --fail --silent --show-error --max-time 60 "$BASE_URL/api/business/leads"
           echo
 
           echo "== Mobile control surface =="
