@@ -10,11 +10,17 @@ on:
 jobs:
   autonomy-check:
     runs-on: ubuntu-latest
+    env:
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
     steps:
       - name: Check production health, business layer, and autonomous cycle
         run: |
           set -euo pipefail
           BASE_URL="https://zoz-ai-control.vercel.app"
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "CRON_SECRET GitHub Actions secret is not configured"
+            exit 1
+          fi
           echo "== Health =="
           curl --fail --silent --show-error --max-time 30 "$BASE_URL/health" | tee /tmp/health.json
           echo
@@ -40,7 +46,9 @@ jobs:
             -d '{"action":"send_quote","payload":{"leadId":"ci-check"}}' | tee /tmp/safe-action.json
           echo
           echo "== Autonomous cycle =="
-          curl --fail --silent --show-error --max-time 180 "$BASE_URL/api/automation/cycle" | tee /tmp/cycle.json
+          curl --fail --silent --show-error --max-time 180 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "$BASE_URL/api/automation/cycle" | tee /tmp/cycle.json
           echo
           echo "== Readiness after cycle =="
           curl --fail --silent --show-error --max-time 30 "$BASE_URL/api/readiness" | tee /tmp/readiness.json
