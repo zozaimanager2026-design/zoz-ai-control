@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --check server.js && node --check business.js && node business.test.js && node whatsapp_crm.test.js && node autonomy_security.test.js"
+    "test": "node --check server.js && node --check business.js && node business.test.js && node whatsapp_crm.test.js && node autonomy_security.test.js && node integrations/upload-post-instagram.test.js"
   },
   "engines": {
     "node": ">=20 <23"
