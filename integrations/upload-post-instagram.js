@@ -39,7 +39,7 @@ async function getInstagramStatus(profile = PROFILE) {
   if (!item) return { connected: false, profile, reason: "profile_not_found" };
   const instagram = item.social_accounts?.instagram;
   return {
-    connected: Boolean(instagram && typeof instagram === "object" && !item.social_accounts?.instagram?.reauth_required),
+    connected: Boolean(instagram && typeof instagram === "object" && !instagram?.reauth_required),
     reauthRequired: Boolean(instagram?.reauth_required),
     profile,
     handle: instagram?.handle || null,
@@ -52,10 +52,22 @@ async function getRecentMedia({ profile = PROFILE, limit = 10 } = {}) {
   return request(`/api/uploadposts/media?platform=${encodeURIComponent(PLATFORM)}&user=${encodeURIComponent(profile)}&limit=${Math.min(Math.max(limit, 1), 100)}`);
 }
 
+async function publishVideo({ mediaUrl, title = "", description = "", profile = PROFILE } = {}) {
+  if (!mediaUrl || !/^https?:\/\//i.test(mediaUrl)) throw new Error("mediaUrl must be a public http(s) URL");
+  const body = new URLSearchParams();
+  body.set("user", profile);
+  body.set("platform[]", PLATFORM);
+  body.set("video", mediaUrl);
+  if (title) body.set("title", String(title));
+  if (description) body.set("description", String(description));
+  return request("/api/upload", { method: "POST", body });
+}
+
 module.exports = {
   PROFILE,
   PLATFORM,
   getProfiles,
   getInstagramStatus,
-  getRecentMedia
+  getRecentMedia,
+  publishVideo
 };
