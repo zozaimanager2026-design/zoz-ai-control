@@ -13,7 +13,7 @@ jobs:
     steps:
       - name: Check production health and safety boundary
         env:
-          BASE_URL: https://zoz-ai-control.vercel.app
+          BASE_URL: https://zoz-ai-control-production.up.railway.app
         run: |
           set -euo pipefail
 
