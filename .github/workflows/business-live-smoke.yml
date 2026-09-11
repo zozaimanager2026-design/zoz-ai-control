@@ -1,0 +1,33 @@
+name: ZOZ AI Business Live Smoke Test
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  business-live-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Exercise safe lead workflow in production
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL="https://zoz-ai-control-production.up.railway.app"
+          payload='{"name":"ZOZ Smoke Test","phone":"+20000000000","source":"production-smoke","product":"test-only","notes":"Automated non-financial smoke test"}'
+          response=$(curl -fsS -X POST "$BASE_URL/api/business/leads" -H 'Content-Type: application/json' --data "$payload")
+          echo "$response"
+          echo "$response" | grep -q 'ZOZ Smoke Test'
+          curl -fsS "$BASE_URL/api/business/summary"
+          curl -fsS "$BASE_URL/api/business/leads" | grep -q 'ZOZ Smoke Test'
+          echo "Business lead create/read smoke test passed."
+
+      - name: Verify financial safety gate remains protected
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL="https://zoz-ai-control-production.up.railway.app"
+          status=$(curl -sS -o /tmp/automation.json -w '%{http_code}' "$BASE_URL/api/automation/cycle")
+          test "$status" = "401" || test "$status" = "503"
+          cat /tmp/automation.json
+          echo "Financial/automation authorization boundary remains protected."
