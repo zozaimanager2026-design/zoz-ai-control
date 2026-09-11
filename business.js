@@ -19,6 +19,17 @@ const FINANCIAL_ACTIONS = new Set([
   "receive_money"
 ]);
 
+const ACTION_ALIASES = new Map([
+  ["send_quote", ["send_quote", "quote", "عرض سعر", "ارسال عرض", "إرسال عرض", "سعر"]],
+  ["follow_up", ["follow_up", "followup", "متابعة", "تابع", "متابعه"]],
+  ["create_lead", ["create_lead", "lead", "عميل محتمل", "انشاء عميل", "إنشاء عميل"]],
+  ["create_order", ["create_order", "order", "طلب", "انشاء طلب", "إنشاء طلب"]],
+  ["collect_deposit", ["collect_deposit", "deposit", "تحصيل مقدم", "تحصيل عربون", "استلام مقدم"]],
+  ["purchase_product", ["purchase_product", "purchase", "شراء منتج", "شراء"]],
+  ["pay_supplier", ["pay_supplier", "دفع للمورد", "دفع مورد"]],
+  ["transfer_money", ["transfer_money", "تحويل", "تحويل أموال", "تحويل اموال"]]
+]);
+
 function createBusinessState() {
   return {
     customers: [],
@@ -184,16 +195,28 @@ function registerOpportunity(state, input = {}) {
   return opportunity;
 }
 
+function normalizeBusinessAction(action) {
+  const raw = String(action || "").trim().toLowerCase();
+  if (!raw) return "";
+  for (const [normalized, aliases] of ACTION_ALIASES.entries()) {
+    if (aliases.some((alias) => raw === alias.toLowerCase() || raw.includes(alias.toLowerCase()))) return normalized;
+  }
+  return raw;
+}
+
 function planAction(action, payload = {}) {
-  const normalizedAction = String(action || "").trim();
+  const normalizedAction = normalizeBusinessAction(action);
   const financial = FINANCIAL_ACTIONS.has(normalizedAction);
   return {
     id: makeId("action"),
     action: normalizedAction,
+    requestedAction: String(action || "").trim(),
     payload,
     status: financial ? "approval_required" : "ready",
     financial,
     humanApprovalRequired: financial,
+    autoExecutable: !financial,
+    executionMode: financial ? "human_approval" : "safe_internal_or_verified_connector",
     createdAt: new Date().toISOString()
   };
 }
@@ -232,6 +255,7 @@ module.exports = {
   moveLead,
   createOrder,
   registerOpportunity,
+  normalizeBusinessAction,
   planAction,
   businessSummary
 };
