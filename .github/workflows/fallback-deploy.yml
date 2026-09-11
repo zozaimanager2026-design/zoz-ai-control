@@ -1,0 +1,25 @@
+name: ZOZ AI Fallback Deployment
+
+on:
+  check_run:
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  fallback:
+    if: github.event_name == 'workflow_dispatch' || (github.event.check_run.conclusion == 'failure' && contains(github.event.check_run.name, 'Vercel'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Node fallback when configured
+        env:
+          FALLBACK_DEPLOY_HOOK: ${{ secrets.FALLBACK_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$FALLBACK_DEPLOY_HOOK" ]; then
+            echo "Fallback host is not configured yet. No claim of deployment is made."
+            exit 0
+          fi
+          curl --fail --silent --show-error --max-time 30 -X POST "$FALLBACK_DEPLOY_HOOK"
+          echo "Fallback deployment hook triggered."
+      - name: Explain activation requirement
+        run: |
+          echo "A fallback is considered active only after its Node/Express URL passes health, self-test, readiness, protected automation-cycle, and mobile-surface checks."
