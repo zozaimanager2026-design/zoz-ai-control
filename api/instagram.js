@@ -31,16 +31,8 @@ module.exports = async function handler(req, res) {
     if (req.method === "POST") {
       const { action, mediaUrl, title, description } = req.body || {};
       if (action !== "publish") return sendError(res, 400, "unsupported_action");
-      if (!mediaUrl || !/^https?:\\/\\//i.test(mediaUrl)) return sendError(res, 400, "mediaUrl_must_be_public_http_url");
-
-      const body = new URLSearchParams();
-      body.set("user", instagram.PROFILE);
-      body.set("platform[]", "instagram");
-      body.set("video", mediaUrl);
-      if (title) body.set("title", String(title));
-      if (description) body.set("description", String(description));
-
-      const result = await instagram.publishVideo(body);
+      if (!mediaUrl || !/^https?:\/\//i.test(mediaUrl)) return sendError(res, 400, "mediaUrl_must_be_public_http_url");
+      const result = await instagram.publishVideo({ mediaUrl, title, description });
       return res.status(200).json({ ok: true, action, result });
     }
 
