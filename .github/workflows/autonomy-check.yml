@@ -30,16 +30,10 @@ jobs:
           curl --fail --silent --show-error --max-time 60 "$BASE_URL/api/automation/status" | tee /tmp/automation.json
           echo
           echo "== Financial approval gate =="
-          curl --fail --silent --show-error --max-time 60 \
-            -H 'Content-Type: application/json' \
-            -d '{"type":"payment","title":"CI security probe","description":"Automated safety-boundary check","payload":{"amount":1}}' \
-            "$BASE_URL/api/jobs" | tee /tmp/financial.json
+          curl --fail --silent --show-error --max-time 60 -H 'Content-Type: application/json' -d '{"type":"payment","title":"CI security probe","description":"Automated safety-boundary check","payload":{"amount":1}}' "$BASE_URL/api/jobs" | tee /tmp/financial.json
           echo
           echo "== Safe action planner =="
-          curl --fail --silent --show-error --max-time 60 \
-            -H 'Content-Type: application/json' \
-            -d '{"type":"internal","title":"CI safe action probe","description":"Automated safe-action readiness check"}' \
-            "$BASE_URL/api/jobs" | tee /tmp/safe.json
+          curl --fail --silent --show-error --max-time 60 -H 'Content-Type: application/json' -d '{"type":"internal","title":"CI safe action probe","description":"Automated safe-action readiness check"}' "$BASE_URL/api/jobs" | tee /tmp/safe.json
           echo
           echo "== Autonomous cycle security =="
           STATUS=$(curl --silent --show-error --max-time 60 -o /tmp/cycle.json -w '%{http_code}' "$BASE_URL/api/automation/cycle")
