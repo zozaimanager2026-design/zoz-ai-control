@@ -94,3 +94,25 @@ if (!source.includes('app.get("/api/persistence/check"')) {
 
 fs.writeFileSync(file, source);
 console.log("PostgreSQL persistence bootstrap applied");
+
+if (process.env.ZOZ_PERSISTENCE_PROVIDER === "postgresql") {
+  const { Pool } = require("pg");
+  if (!process.env.DATABASE_URL) throw new Error("PostgreSQL persistence is required but DATABASE_URL is missing");
+  const verifyPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1, connectionTimeoutMillis: 8000 });
+  (async () => {
+    try {
+      await verifyPool.query("CREATE TABLE IF NOT EXISTS zoz_state (id TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
+      const probeId = "bootstrap_persistence_probe";
+      const payload = JSON.stringify({ checkedAt: new Date().toISOString(), provider: "postgresql" });
+      await verifyPool.query("INSERT INTO zoz_state (id, payload, updated_at) VALUES ($1, $2::jsonb, NOW()) ON CONFLICT (id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()", [probeId, payload]);
+      const result = await verifyPool.query("SELECT payload FROM zoz_state WHERE id = $1", [probeId]);
+      if (!result.rows[0]) throw new Error("PostgreSQL persistence read-back failed");
+      console.log("PostgreSQL persistence verified: write/read successful");
+    } finally {
+      await verifyPool.end();
+    }
+  })().catch((error) => {
+    console.error("PostgreSQL persistence verification failed:", error.message);
+    process.exitCode = 1;
+  });
+}
