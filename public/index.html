@@ -43,7 +43,7 @@
   <section>
     <h2>التشغيل الذاتي</h2>
     <p class="small">الدورة تنفذ الأعمال الداخلية الآمنة فقط، وتوقف أي إجراء مالي للموافقة البشرية.</p>
-    <button id="cycleButton" onclick="runCycle()">تشغيل دورة الاستقلالية الآن</button>
+    <button id="cycleButton" onclick="checkCycleStatus()">فحص دورة الاستقلالية</button>
     <pre id="cycleResult">لم يتم تشغيل الدورة يدويًا بعد.</pre>
   </section>
 
@@ -173,6 +173,17 @@ async function refreshDashboard() {
   document.getElementById("status").textContent = state.status === "running" ? "يعمل" : state.status; document.getElementById("jobs").textContent = jobs.length; renderConnectors(connectors); renderReadiness(readiness); renderBusiness(summary); renderCollections(leads, orders, opportunities);
   document.getElementById("jobList").innerHTML = jobs.length ? jobs.map(job => `<div class="card"><strong>${escapeHtml(job.title)}</strong><p>${escapeHtml(job.description)}</p><small>الحالة: ${escapeHtml(job.status)}</small></div>`).join("") : "لا توجد مهام حاليًا.";
 }
+async function checkCycleStatus() {
+  const box = document.getElementById("cycleResult");
+  box.textContent = "جاري فحص حالة دورة الاستقلالية...";
+  try {
+    const data = await getJson("/api/automation/status");
+    box.textContent = JSON.stringify({ ok: true, note: "الدورة محمية وتعمل عبر Vercel Cron؛ التشغيل اليدوي العام غير مسموح دون اعتماد آمن.", status: data }, null, 2);
+  } catch (error) {
+    box.textContent = `تعذر فحص حالة الدورة: ${error.message}`;
+  }
+}
+
 async function runCycle() { const button = document.getElementById("cycleButton"); button.disabled = true; button.textContent = "جارٍ تشغيل الدورة..."; try { const result = await getJson("/api/automation/cycle"); document.getElementById("cycleResult").textContent = JSON.stringify(result, null, 2); await refreshDashboard(); } catch (error) { document.getElementById("cycleResult").textContent = "تعذر تشغيل الدورة: " + error.message; } finally { button.disabled = false; button.textContent = "تشغيل دورة الاستقلالية الآن"; } }
 async function createLead() { try { const result = await postJson("/api/business/leads", { name: document.getElementById("leadName").value, phone: document.getElementById("leadPhone").value, request: document.getElementById("leadRequest").value, budget: document.getElementById("leadBudget").value ? Number(document.getElementById("leadBudget").value) : null, source: document.getElementById("leadSource").value }); document.getElementById("businessActionResult").textContent = JSON.stringify(result, null, 2); await refreshDashboard(); } catch (e) { document.getElementById("businessActionResult").textContent = "تعذر حفظ العميل: " + e.message; } }
 async function createOpportunity() { try { const result = await postJson("/api/business/opportunities", { title: document.getElementById("oppTitle").value, description: document.getElementById("oppDescription").value, score: Number(document.getElementById("oppScore").value || 0), source: document.getElementById("oppSource").value }); document.getElementById("businessActionResult").textContent = JSON.stringify(result, null, 2); await refreshDashboard(); } catch (e) { document.getElementById("businessActionResult").textContent = "تعذر حفظ الفرصة: " + e.message; } }

@@ -14,8 +14,11 @@ const WHATSAPP_API_VERSION = process.env.WHATSAPP_API_VERSION || "v23.0";
 app.use(express.json({ verify: (req, res, buffer) => { req.rawBody = Buffer.from(buffer); } }));
 app.use(express.static(path.join(__dirname, "public")));
 
+const KV_REST_API_URL = process.env.KV_REST_API_URL || process.env.ZOZ_KV_REST_API_URL;
+const KV_REST_API_TOKEN = process.env.KV_REST_API_TOKEN || process.env.ZOZ_KV_REST_API_TOKEN;
+
 const persistence = {
-  enabled: Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN),
+  enabled: Boolean(KV_REST_API_URL && KV_REST_API_TOKEN),
   key: process.env.ZOZ_STATE_KEY || "zoz-ai:state"
 };
 
@@ -36,8 +39,8 @@ const state = {
 
 function audit(event, details = {}) { state.audit.push({ id: `${Date.now()}-${state.audit.length}`, event, details, at: new Date().toISOString() }); if (state.audit.length > 500) state.audit.splice(0, state.audit.length - 500); }
 async function fetchJson(url, options = {}) { const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 8000); try { const response = await fetch(url, { ...options, signal: controller.signal }); const text = await response.text(); let body = null; try { body = text ? JSON.parse(text) : null; } catch { body = { text: text.slice(0, 300) }; } return { ok: response.ok, status: response.status, body }; } finally { clearTimeout(timer); } }
-async function kvGet(key) { if (!persistence.enabled) return null; const base = process.env.KV_REST_API_URL.replace(/\/$/, ""); const response = await fetchJson(`${base}/get/${encodeURIComponent(key)}`, { headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` } }); if (!response.ok) throw new Error(`Persistence GET failed: ${response.status}`); return response.body; }
-async function kvSet(key, value) { if (!persistence.enabled) return null; const base = process.env.KV_REST_API_URL.replace(/\/$/, ""); const response = await fetchJson(`${base}/set/${encodeURIComponent(key)}`, { method: "POST", headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify(value) }); if (!response.ok) throw new Error(`Persistence SET failed: ${response.status}`); return response.body; }
+async function kvGet(key) { if (!persistence.enabled) return null; const base = KV_REST_API_URL.replace(/\/$/, ""); const response = await fetchJson(`${base}/get/${encodeURIComponent(key)}`, { headers: { Authorization: `Bearer ${KV_REST_API_TOKEN}` } }); if (!response.ok) throw new Error(`Persistence GET failed: ${response.status}`); return response.body; }
+async function kvSet(key, value) { if (!persistence.enabled) return null; const base = KV_REST_API_URL.replace(/\/$/, ""); const response = await fetchJson(`${base}/set/${encodeURIComponent(key)}`, { method: "POST", headers: { Authorization: `Bearer ${KV_REST_API_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify(value) }); if (!response.ok) throw new Error(`Persistence SET failed: ${response.status}`); return response.body; }
 async function loadState() { if (!persistence.enabled) return; try { const result = await kvGet(persistence.key); if (result && result.result) { const saved = typeof result.result === "string" ? JSON.parse(result.result) : result.result; if (saved && typeof saved === "object") { state.jobs = Array.isArray(saved.jobs) ? saved.jobs : []; state.approvals = Array.isArray(saved.approvals) ? saved.approvals : []; state.audit = Array.isArray(saved.audit) ? saved.audit.slice(-500) : []; if (saved.business && typeof saved.business === "object") state.business = { ...business.createBusinessState(), ...saved.business }; } } } catch (error) { console.error("State load warning:", error.message); audit("persistence_load_failed", { message: error.message }); } }
 async function saveState() { if (!persistence.enabled) return; try { await kvSet(persistence.key, { ...state, savedAt: new Date().toISOString() }); } catch (error) { console.error("State save warning:", error.message); } }
 function isFinanciallySensitive(text = "") { return /دفع|شراء|تحويل|سحب|استلام\s*أموال|استلام\s*اموال|بنك|بطاقة|bank|card|payment|purchase|transfer|withdraw/i.test(text); }
