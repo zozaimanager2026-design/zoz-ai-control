@@ -1,0 +1,38 @@
+name: ZOZ AI Production Monitor
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  production-monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check production health and safety boundary
+        env:
+          BASE_URL: https://zoz-ai-control.vercel.app
+        run: |
+          set -euo pipefail
+
+          echo "== Production health =="
+          curl --fail --silent --show-error --max-time 60 "$BASE_URL/api/health"
+          echo
+
+          echo "== Production self-test =="
+          curl --fail --silent --show-error --max-time 60 "$BASE_URL/api/self-test"
+          echo
+
+          echo "== Production readiness =="
+          curl --fail --silent --show-error --max-time 60 "$BASE_URL/api/readiness"
+          echo
+
+          echo "== Cron protection =="
+          STATUS=$(curl --silent --show-error --max-time 60 -o /tmp/cycle.json -w '%{http_code}' "$BASE_URL/api/automation/cycle")
+          cat /tmp/cycle.json
+          echo
+          if [ "$STATUS" != "401" ] && [ "$STATUS" != "503" ]; then
+            echo "Cron endpoint is not safely rejecting unauthenticated requests (HTTP $STATUS)."
+            exit 1
+          fi
+          echo "Cron endpoint protection confirmed (HTTP $STATUS)."
