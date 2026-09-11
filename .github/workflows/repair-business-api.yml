@@ -1,0 +1,51 @@
+name: ZOZ AI Business API Repair Guard
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: ${{ !startsWith(github.event.head_commit.message, 'ZOZ: add customer API') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Repair business API routes
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('server.js')
+          text = p.read_text(encoding='utf-8')
+
+          customer = 'app.get("/api/business/customers", (req, res) => res.json(state.business.customers));'
+          customer_post = 'app.post("/api/business/customers", async (req, res) => { try { const customer = business.upsertCustomer(state.business, req.body); audit("business_customer_upserted", { customerId: customer.id }); await saveState(); res.status(201).json(customer); } catch (error) { res.status(400).json({ error: error.message }); } });'
+          if customer in text and customer_post not in text:
+              text = text.replace(customer, customer + customer_post, 1)
+
+          duplicate = 'app.get("/api/business/leads", (req, res) => res.json(state.business.leads));'
+          first = text.find(duplicate)
+          second = text.find(duplicate, first + len(duplicate)) if first >= 0 else -1
+          if second >= 0:
+              text = text[:second] + text[second + len(duplicate):]
+
+          p.write_text(text, encoding='utf-8')
+
+      - name: Run tests
+        run: npm test
+
+      - name: Commit repaired API
+        run: |
+          if git diff --quiet; then
+            echo 'No repair needed.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add server.js
+          git commit -m 'ZOZ: add customer API and remove duplicate lead route'
+          git push
