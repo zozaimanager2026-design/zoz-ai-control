@@ -21,7 +21,8 @@
 <script>
 if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
 const frame=document.getElementById('frame');
-function go(name,btn){document.querySelectorAll('.bar button').forEach(x=>x.classList.remove('active'));btn.classList.add('active');if(name==='home'){frame.src='/';return}frame.contentWindow.postMessage({type:'ZOZ_NAV',target:name},location.origin)}
+function scrollToSection(target){try{const doc=frame.contentDocument;const heads=[...doc.querySelectorAll('section h2,h2')];const terms={leads:['العملاء المحتملون'],orders:['الطلبات والفرص'],blockers:['العوائق والخطوة التالية']};const h=heads.find(x=>(terms[target]||[]).some(t=>x.textContent.includes(t)));if(h){h.scrollIntoView({behavior:'smooth',block:'start'});return true}}catch(e){}return false}
+function go(name,btn){document.querySelectorAll('.bar button').forEach(x=>x.classList.remove('active'));btn.classList.add('active');if(name==='home'){frame.src='/';return}if(name==='social'){window.open('https://app.upload-post.com/dashboard','_blank','noopener');return}if(!scrollToSection(name)){setTimeout(()=>scrollToSection(name),500)}}
 window.addEventListener('message',e=>{if(e.origin!==location.origin)return;if(e.data?.type==='ZOZ_READY')document.getElementById('status').textContent='متصل'});
 let deferredPrompt=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;document.getElementById('install').style.display='block'});document.getElementById('installBtn').onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;document.getElementById('install').style.display='none'};
 fetch('/api/health').then(r=>{if(r.ok)document.getElementById('status').textContent='يعمل'}).catch(()=>document.getElementById('status').textContent='غير متصل');
