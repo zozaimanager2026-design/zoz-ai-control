@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "buildCommand": "node scripts/enable-postgres-persistence.js",
   "builds": [
     {
       "src": "server.js",
