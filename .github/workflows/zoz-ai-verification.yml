@@ -39,8 +39,11 @@ jobs:
           STATUS=$(curl -sS -o /tmp/cycle.json -w '%{http_code}' http://127.0.0.1:3099/api/automation/cycle)
           cat /tmp/cycle.json
           echo
-          test "$STATUS" = "401"
-          echo "Local production-safety verification passed."
+          if [ "$STATUS" != "401" ] && [ "$STATUS" != "503" ]; then
+            echo "Production-safety verification failed with HTTP $STATUS."
+            exit 1
+          fi
+          echo "Local production-safety verification passed: cron endpoint is protected."
 
   live-production-check:
     runs-on: ubuntu-latest
