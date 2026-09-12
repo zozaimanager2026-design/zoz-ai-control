@@ -1,2 +1,3 @@
 ZOZ AI production smoke-test workflow is configured in .github/workflows/business-live-smoke.yml. This file is intentionally harmless and contains no credentials or financial actions.
 Trigger: production verification run after Railway runtime hardening.
+Trigger: Railway source-sync verification from GitHub main.
