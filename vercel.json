@@ -4,9 +4,17 @@
     {
       "src": "server.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "api/whatsapp-status.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
+    {
+      "src": "/api/whatsapp-status",
+      "dest": "api/whatsapp-status.js"
+    },
     {
       "src": "/(.*)",
       "dest": "server.js"
