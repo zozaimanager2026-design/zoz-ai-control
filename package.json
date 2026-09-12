@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node scripts/repair-business-api-runtime.js && node scripts/enable-postgres-persistence.js && node server.js",
     "vercel-build": "node scripts/enable-postgres-persistence.js",
-    "test": "node --check server.js && node --check business.js && node business.test.js && node whatsapp_crm.test.js && node peach.test.js && node whatsapp_security.test.js && node autonomy_security.test.js && node integrations/upload-post-instagram.test.js && node persistence.test.js"
+    "test": "node --check server.js && node --check business.js && node --check scripts/enable-postgres-persistence.js && node business.test.js && node whatsapp_crm.test.js && node peach.test.js && node whatsapp_security.test.js && node autonomy_security.test.js && node integrations/upload-post-instagram.test.js && node persistence.test.js"
   },
   "engines": {
     "node": ">=20 <23"
