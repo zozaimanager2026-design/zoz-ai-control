@@ -1,65 +1,102 @@
 # ZOZ AI — AI Business Operating System
 
-هذا المستودع هو النواة التشغيلية لـ ZOZ AI. الهدف ليس عرض Dashboard فقط، بل طبقة تشغيل تحفظ حالة العمل، تدير العملاء والفرص والطلبات، تنظم المهام، تتحقق من الموصلات، وتسجل القرارات والأحداث، مع بوابة موافقة بشرية للعمليات المالية.
+هذا المستودع هو النواة التشغيلية لـ ZOZ AI. الهدف ليس Dashboard شكليًا: النواة تحفظ حالة العمل، تدير العملاء والفرص والطلبات، تنظم المهام، تتحقق من الموصلات، وتسجل الأحداث، مع بوابة موافقة بشرية للعمليات المالية.
 
-## ما يعمل داخل النواة
+## WhatsApp / Peach
 
-- **Business layer:** عملاء، عملاء محتملون، مراحل مبيعات، طلبات، منتجات، موردون، مصروفات، وفرص.
-- **Execution layer:** طابور مهام + دورة استقلالية تنفذ الأعمال الداخلية الآمنة فقط.
-- **Human approval:** الدفع، الشراء، التحويل، السحب، التحصيل، واستلام الأموال لا تُنفذ تلقائيًا.
-- **Approval ledger:** تسجيل طلبات الموافقة وحالتها وتوقيتها بدل الاعتماد على زر شكلي.
-- **Audit log:** سجل مركزي للأحداث التشغيلية.
-- **Connector verification:** لا يُعتبر الموصل جاهزًا للتشغيل الخارجي إلا بعد تحقق فعلي.
-- **Persistence:** دعم KV-compatible REST عبر Environment Variables. بدون KV تبقى الحالة `memory_only` ويظهر ذلك كعائق في readiness.
-- **WhatsApp CRM:** استقبال رسائل WhatsApp وتحويلها إلى عميل/Lead داخل طبقة الأعمال، مع دعم التحقق من توقيع `X-Hub-Signature-256` عند توفير `WHATSAPP_APP_SECRET`.
-- **Vercel:** المشروع يستهدف مشروع Vercel الحالي ولا ينشئ مشروعًا جديدًا.
-- **Production monitor:** GitHub Actions يفحص الصحة والاختبار الداخلي وreadiness وحماية دورة الاستقلالية كل 6 ساعات، مع تشغيل يدوي متاح.
+Peach هو مسار WhatsApp outbound الأساسي عند توفر بياناته. لا ينشئ النظام Repo أو Vercel Project جديدًا.
 
-## حدود الاستقلالية
+### Peach outbound contract
 
-ZOZ AI يستطيع تشغيل العمليات الداخلية الآمنة تلقائيًا. الموافقة البشرية لا تعني أن النواة ستنفذ حركة مالية فعلية: النواة تسجل التفويض، لكنها لا تحتوي على منفذ مالي مباشر. أي تكامل مالي مستقبلي يجب أن يظل خلف موافقة بشرية صريحة وأسرار محفوظة في Environment Variables.
+يستخدم النظام دائمًا هذا العنوان عند الإرسال عبر Peach:
 
-## حماية دورة الاستقلالية
+`POST https://app.trypeach.io/api/v1/events`
 
-المساران `GET /api/automation/cycle` و`POST /api/automation/cycle` محميان بـ `CRON_SECRET`.
+Headers:
 
-- على Vercel: إذا لم يكن `CRON_SECRET` مضبوطًا، يُعاد `503` بدل تشغيل الدورة.
-- عند غياب أو خطأ Authorization، يُعاد `401`.
-- التشغيل المصرح به فقط يستخدم `Authorization: Bearer <CRON_SECRET>`.
-- لا يتم وضع السر داخل GitHub أو الكود أو سجلات GitHub Actions.
+- `Authorization: <PEACH_API_KEY>`
+- `Content-Type: application/json`
 
-## الأسرار
+Body structure:
 
-لا تضع أي Secret أو Access Token في GitHub أو الكود. استخدم Environment Variables في Vercel. راجع `.env.example` لمعرفة أسماء المتغيرات.
+- `event_type: "send_template_message"`
+- `contact.phone_number`
+- `template_message.whats_app_template_id`
+- `template_message.liquid_values`
 
-## نقاط التشغيل
+`liquid_values` تُرسل كما يحددها الطلب/Template. النظام لا يفرض متغيرًا باسم `message`. لذلك يجب إرسال مثلًا `{"customer_name":"...","product_name":"..."}` حسب متغيرات Template الفعلية. عند الحاجة يمكن تعريف `PEACH_TEMPLATE_VARIABLE` في Environment Variables لتطبيقات أخرى، لكنه ليس اسمًا مفروضًا داخل Payload.
 
-- `/health` — صحة الخدمة.
-- `/api/self-test` — الاختبار الداخلي.
-- `/api/readiness` — العوائق الفعلية.
-- `/api/plan` — خطة التنفيذ المرتبة.
-- `/api/state` — الحالة التشغيلية.
-- `/api/audit` — سجل التدقيق.
-- `/api/approvals` — سجل الموافقات.
-- `/api/jobs` — طابور المهام.
-- `/api/business/summary` — ملخص التشغيل التجاري.
-- `/api/business/customers` — العملاء.
-- `/api/business/leads` — العملاء المحتملون.
-- `/api/business/orders` — الطلبات.
-- `/api/business/opportunities` — الفرص.
-- `/api/business/actions/plan` — تخطيط إجراء مع تحديد ما إذا كان ماليًا.
-- `/api/connectors/status` — حالة الموصلات.
-- `/api/connectors/verify?id=whatsapp` — تحقق فعلي من WhatsApp API.
-- `/api/automation/status` — حالة الاستقلالية الآمنة.
-- `/api/automation/cycle` — دورة الاستقلالية المحمية؛ التشغيل يتطلب `CRON_SECRET`.
-- `/api/whatsapp/webhook` — تحقق واستقبال WhatsApp Cloud API.
+### Peach webhook
 
-## الاختبارات والتحقق المستقل
+سجّل داخل Peach عنوان الـWebhook التالي:
 
-`npm test` يتحقق من syntax ويشغل اختبارات طبقة الأعمال وWhatsApp CRM واختبار حماية دورة الاستقلالية.
+`https://<ZOZ-AI-DOMAIN>/api/webhooks/peach`
 
-`/.github/workflows/production-monitor.yml` هو مسار التحقق المستقل عند تعذر الوصول المباشر إلى Vercel API؛ لا يعتمد على كشف أو تمرير `CRON_SECRET` إلى GitHub.
+يدعم endpoint أحداث:
 
-## التعامل مع العوائق
+- `message_delivery.sent`
+- `message_delivery.delivered`
+- `message_delivery.failed`
+- `message_delivery.read`
+- `message_delivery.replied`
 
-إذا تعذر Vercel API/MCP بسبب `403` أو `Not authorized`، لا يتم إنشاء مشروع بديل ولا تكرار التفويض بلا دليل جديد. تُنفذ تغييرات الكود والاختبارات والمراقبة عبر GitHub/GitHub Actions، ويُعتبر runtime في Vercel غير متحقق منه مباشرة حتى ينجح فحص مستقل. التفاصيل في `BLOCKER_PLAYBOOK.md`.
+عند `message_delivery.replied` يستخرج النظام رقم العميل واسمه ونص الرد، ثم ينشئ/يحدّث Customer وLead داخل WhatsApp CRM، ويسجل Audit Event، ويحفظ الحالة عند توفر KV persistence.
+
+لا يتم تسجيل API keys أو tokens أو Authorization headers أو أسرار في Audit أو Responses.
+
+### Meta webhook
+
+مسار Meta موجود ومنفصل ولا يعتمد على Peach:
+
+- `GET /api/whatsapp/webhook` — Meta verification challenge.
+- `POST /api/whatsapp/webhook` — استقبال أحداث Meta مع التحقق من `WHATSAPP_APP_SECRET` عند توفره.
+
+### WhatsApp outbound endpoint
+
+`POST /api/whatsapp/send` محمي server-side بـ:
+
+`Authorization: Bearer <WHATSAPP_SEND_SECRET>`
+
+إذا لم يكن `WHATSAPP_SEND_SECRET` مضبوطًا، لا يسمح endpoint بالإرسال ويعيد `503`. الرسائل المالية تُرفض بـ `403` ولا تُرسل تلقائيًا.
+
+عند وجود Peach credentials يستخدم النظام Peach. إذا لم تكن Peach مهيأة يمكن استخدام Meta outbound كمسار احتياطي تقني.
+
+## Environment Variables في Vercel
+
+أضف القيم فقط داخل Environment Variables في مشروع Vercel الحالي:
+
+- `PEACH_API_KEY` — مفتاح Peach الحقيقي.
+- `PEACH_TEMPLATE_ID` — ID الـWhatsApp Template المعتمد في Peach.
+- `PEACH_TEMPLATE_VARIABLE` — اختياري فقط عند الحاجة؛ لا يوجد اسم متغير مفروض.
+- `PEACH_BUSINESS_PHONE_NUMBER` — اختياري إذا كان مطلوبًا من حساب/Template Peach.
+- `WHATSAPP_SEND_SECRET` — سر حماية `POST /api/whatsapp/send`.
+- `WHATSAPP_VERIFY_TOKEN` — Meta webhook verification token.
+- `WHATSAPP_APP_SECRET` — Meta signature validation.
+- `CRON_SECRET` — حماية `/api/automation/cycle`؛ لا تتركه فارغًا في Production.
+- `DATABASE_URL` أو `KV_REST_API_URL` + `KV_REST_API_TOKEN` — persistence حسب البنية الحالية.
+
+لا تضع أي قيمة سرية داخل GitHub أو `.env.example`.
+
+## التشغيل والتحقق
+
+بعد ضبط Environment Variables:
+
+1. شغّل `npm test`.
+2. شغّل `node --check server.js`.
+3. شغّل `node --check business.js`.
+4. تحقق من `/api/self-test` و`/api/readiness`.
+5. تحقق من `/api/connectors/verify?id=whatsapp`.
+6. سجّل `POST https://<ZOZ-AI-DOMAIN>/api/webhooks/peach` داخل Peach.
+7. أرسل رسالة اختبار غير مالية من خلال `POST /api/whatsapp/send` مع `Authorization: Bearer <WHATSAPP_SEND_SECRET>` و`liquid_values` المطابقة للـTemplate.
+
+## Financial safety
+
+الدفع، الشراء، التحويل، السحب، التحصيل، واستلام الأموال تبقى خلف Human Approval. موافقة المستخدم لا تعني تنفيذ حركة مالية فعلية؛ النواة تسجل التفويض فقط ولا تنفذ حركة مالية تلقائية.
+
+## Cron protection
+
+المساران `GET /api/automation/cycle` و`POST /api/automation/cycle` محميان بـ `CRON_SECRET`. غياب السر في Production يعيد `503` بدل تشغيل الدورة، وAuthorization الخاطئ يعيد `401`.
+
+## الاختبارات
+
+`npm test` يشمل syntax checks، طبقة الأعمال، WhatsApp CRM، Peach payload/webhook structure، حماية WhatsApp outbound، حماية Cron، وتكاملات المشروع الموجودة.
