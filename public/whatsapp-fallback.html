@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZOZ AI — WhatsApp Fallback</title>
+<style>body{font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:20px;background:#f6f7f9;color:#111}main{background:#fff;padding:20px;border-radius:16px;box-shadow:0 4px 20px #0001}input,textarea,button{width:100%;box-sizing:border-box;padding:12px;margin:7px 0;border:1px solid #ddd;border-radius:10px;font:inherit}button{cursor:pointer;background:#111;color:#fff}.status{padding:10px;border-radius:10px;background:#eef2ff;margin:10px 0}.link{display:block;margin-top:12px;padding:12px;background:#e9f7ef;border-radius:10px;word-break:break-all}.small{font-size:13px;color:#666}</style>
+</head>
+<body><main>
+<h2>ZOZ AI — WhatsApp Fallback</h2>
+<div class="status">مسار احتياطي مؤقت: يستخدم رابط WhatsApp المباشر عندما لا تكون Peach/Meta Credentials متاحة.</div>
+<label>رقم العميل بصيغة دولية</label><input id="phone" placeholder="2010xxxxxxxx" inputmode="tel">
+<label>الرسالة</label><textarea id="message" rows="7" placeholder="اكتب الرسالة هنا"></textarea>
+<button onclick="makeLink()">تجهيز رسالة WhatsApp</button>
+<div id="out"></div>
+<p class="small">هذا المسار لا يرسل تلقائيًا؛ يفتح محادثة WhatsApp بالرسالة الجاهزة، ثم تحتاج إلى الضغط على إرسال. الإرسال التلقائي سيعمل فور إضافة Peach API Key + Template ID أو Meta Access Token.</p>
+</main>
+<script>
+function makeLink(){
+ const phone=document.getElementById('phone').value.replace(/\D/g,'');
+ const message=document.getElementById('message').value.trim();
+ const out=document.getElementById('out');
+ if(!phone||!message){out.innerHTML='<div class="status">أدخل رقم العميل والرسالة.</div>';return;}
+ const url='https://wa.me/'+phone+'?text='+encodeURIComponent(message);
+ out.innerHTML='<a class="link" target="_blank" rel="noopener" href="'+url+'">فتح WhatsApp وإرسال الرسالة</a>';
+}
+</script>
+</body></html>
