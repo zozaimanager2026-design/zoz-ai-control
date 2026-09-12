@@ -1,0 +1,28 @@
+name: ZOZ AI Railway Source Sync
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact GitHub main
+        uses: actions/checkout@v4
+
+      - name: Deploy exact checked-out source to Railway production
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${RAILWAY_TOKEN:-}" ]; then
+            echo "RAILWAY_TOKEN GitHub secret is required for source-sync deployment."
+            exit 1
+          fi
+          npm install -g @railway/cli
+          railway up --project 5c56dcd6-bbf1-4ae7-8e1c-df521e22aa02 --environment production --service ae43c326-b01b-494e-9692-5308d309aec1 --ci
