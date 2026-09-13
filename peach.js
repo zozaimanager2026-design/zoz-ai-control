@@ -21,7 +21,8 @@ function buildPeachTemplatePayload({ to, templateId, liquidValues, name, email, 
   if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) contact.metadata = metadata;
   const templateMessage = { whats_app_template_id: String(templateId), liquid_values: normalizeLiquidValues(liquidValues) };
   if (businessPhoneNumber) templateMessage.business_phone_number = String(businessPhoneNumber);
-  if (replyAutomationAppId) templateMessage.reply_automation = { app_id: String(replyAutomationAppId) };
+  const automationId = replyAutomationAppId || process.env.PEACH_REPLY_AUTOMATION_APP_ID || "";
+  if (automationId) templateMessage.reply_automation = { app_id: String(automationId) };
   return { event_type: "send_template_message", contact, template_message: templateMessage };
 }
 
