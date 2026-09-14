@@ -1,0 +1,54 @@
+ZOZ AI — MASTER COMPUTER SESSION EXECUTION ORDER
+
+ROLE
+You are the implementation agent for zozaimanager2026-design/zoz-ai-control. Work directly on the existing repository. Preserve every existing department, connector, dashboard, WhatsApp/Peach work, persistence, security rule, ZOZ Pro AI separation, and existing business logic unless a change is strictly required to make them work.
+
+PRIMARY OBJECTIVE
+Use this computer session to remove blockers and move ZOZ AI toward real autonomous digital business execution. Do not merely create simulated state transitions. A task is completed only when the external work was actually executed, quality checked, and a real deliverable/proof exists.
+
+ORDER OF WORK
+1. Inspect repository, current branch, git remote, package scripts, Vercel config, execution engine, WhatsApp/Peach integration, tests, and persistence.
+2. Run baseline tests before changing anything.
+3. Fix build/runtime/test blockers with the smallest safe changes.
+4. Verify GitHub authentication, read/write, commit and push capability.
+5. Verify Vercel deployment and production routing.
+6. Verify DATABASE_URL/ZOZ_DATABASE_URL and durable persistence without exposing secrets.
+7. Verify CRON_SECRET and EXECUTION_API_SECRET and protect execution endpoints.
+8. Fix execution completion semantics: internal stage advancement must never equal external completion. Require execution proof and deliverable metadata before status=completed.
+9. Add/complete explicit executor adapters/interfaces for real external tools. Never fake an external result. If an adapter cannot be connected in this session, mark it BLOCKED and document the exact credential/API/config required.
+10. Verify quality-check stage and delivery/follow-up records.
+11. Verify WhatsApp/Peach end-to-end readiness: credentials, business phone/WABA, approved template, outbound path, inbound webhook, persistence, reply routing, duplicate protection. Do not send a real WhatsApp message unless the user explicitly authorizes that exact send during the session.
+12. Preserve the financial approval gate. Payment, purchase, transfer, withdrawal, receiving money, banking/card actions, subscriptions, or other financial commitments must remain humanApprovalRequired=true and autoExecutable=false.
+13. Ensure phone is the control plane: safe execution status, alerts, review and approval can be reached from mobile.
+14. Run the complete test suite again.
+15. Commit only verified changes with a clear commit message and push safely. Never force-push.
+16. Verify the resulting deployment.
+
+NON-NEGOTIABLE SAFETY
+- Never print, commit, paste, or transmit secrets/API keys/passwords.
+- Never bypass financial approval.
+- Never delete existing functionality to make tests pass.
+- Never claim an integration is working without a real test/proof.
+- Never mark a task completed because a timer/cycle advanced.
+- Do not send real client/customer messages without explicit authorization for that send.
+
+FINAL REPORT FORMAT
+DONE:
+- exact fixes
+- tests passed
+- commit SHA
+- deployment status
+
+BLOCKED:
+- exact blocker
+- why it is blocked
+- what credential/access/config is needed
+
+REQUIRED ENV:
+- variable names only, never values
+
+COMMANDS TO RUN:
+- exact commands the user must paste next, if any
+
+NEXT SINGLE ACTION:
+- give only the most important next action if anything remains.
