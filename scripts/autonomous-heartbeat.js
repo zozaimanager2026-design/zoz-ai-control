@@ -19,7 +19,7 @@ async function heartbeat(trigger = "scheduled") {
       youtube: youtube ? { stage: youtube.stage || null, ok: youtube.ok, contentId: youtube.contentId || null, adapter: youtube.adapter || null, publishRequestId: youtube.publishRequestId || null } : null,
       at: new Date().toISOString()
     };
-    console.log("[ZOZ autonomous heartbeat]", JSON.stringify(summary));
+    console.log("[ZOZ autonomous heartbeat v2]", JSON.stringify(summary));
   } catch (error) {
     console.error("[ZOZ autonomous heartbeat] failed", error?.message || error);
   } finally {
@@ -30,4 +30,4 @@ async function heartbeat(trigger = "scheduled") {
 setTimeout(() => heartbeat("startup"), 5000);
 setInterval(() => heartbeat("scheduled"), INTERVAL_MS);
 
-console.log(`[ZOZ autonomous heartbeat] enabled every ${INTERVAL_MS}ms`);
+console.log(`[ZOZ autonomous heartbeat v2] enabled every ${INTERVAL_MS}ms`);
