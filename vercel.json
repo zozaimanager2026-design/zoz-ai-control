@@ -8,7 +8,8 @@
     { "src": "api/execution-cycle.js", "use": "@vercel/node" },
     { "src": "api/zoz-memory.js", "use": "@vercel/node" },
     { "src": "api/automation-heartbeat.js", "use": "@vercel/node" },
-    { "src": "api/zoz-autonomy.js", "use": "@vercel/node" }
+    { "src": "api/zoz-autonomy.js", "use": "@vercel/node" },
+    { "src": "api/zoz-reconcile.js", "use": "@vercel/node" }
   ],
   "routes": [
     { "src": "/api/whatsapp-status", "dest": "api/whatsapp-status.js" },
@@ -17,6 +18,7 @@
     { "src": "/api/zoz-memory", "dest": "api/zoz-memory.js" },
     { "src": "/api/zoz-autonomy", "dest": "api/zoz-autonomy.js" },
     { "src": "/api/automation-heartbeat", "dest": "api/automation-heartbeat.js" },
+    { "src": "/api/zoz-reconcile", "dest": "api/zoz-reconcile.js" },
     { "src": "/(.*)", "dest": "server.js" }
   ],
   "crons": [
