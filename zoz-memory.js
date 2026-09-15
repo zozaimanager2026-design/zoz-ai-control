@@ -1,6 +1,6 @@
 const { Pool } = require("pg");
 
-const MEMORY_VERSION = 2;
+const MEMORY_VERSION = 3;
 const MAX_ITEMS = 2000;
 const now = () => new Date().toISOString();
 const id = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -9,11 +9,11 @@ function blankMemory() {
   return {
     version: MEMORY_VERSION,
     identity: { name: process.env.ZOZ_NAME || "ZOZ AI", role: "AI Business Operating System" },
-    goals: [], projects: [], contacts: [], opportunities: [], content: [],
+    goals: [], projects: [], contacts: [], contactHistory: [], opportunities: [], content: [],
     decisions: [], learnings: [], facts: [], channelState: {}, runs: [],
     blockers: [], integrations: {}, controlPlane: {
-      schemaVersion: 1, lastReconciledAt: null, nextAction: null,
-      sources: {}, recordCounts: {}
+      schemaVersion: 2, lastReconciledAt: null, nextAction: null,
+      sources: {}, recordCounts: {}, duplicatePolicy: "suppress_by_phone_email_website_or_name_address"
     },
     updatedAt: now()
   };
@@ -31,9 +31,7 @@ function createMemoryStore() {
   const kvKey = process.env.ZOZ_MEMORY_KEY || "zoz:ai:memory:v2";
 
   async function kvRequest(command, args = []) {
-    const response = await fetch(`${kvUrl}/${command}/${args.map(encodeURIComponent).join("/")}`, {
-      headers: { Authorization: `Bearer ${kvToken}` }
-    });
+    const response = await fetch(`${kvUrl}/${command}/${args.map(encodeURIComponent).join("/")}`, { headers: { Authorization: `Bearer ${kvToken}` } });
     if (!response.ok) throw new Error(`kv_http_${response.status}`);
     return response.json();
   }
@@ -43,9 +41,7 @@ function createMemoryStore() {
     if (!raw) return null;
     return typeof raw === "string" ? JSON.parse(raw) : raw;
   }
-  async function kvSave(value) {
-    return kvRequest("set", [kvKey, JSON.stringify(value)]);
-  }
+  async function kvSave(value) { return kvRequest("set", [kvKey, JSON.stringify(value)]); }
 
   async function init() {
     if (pool) {
@@ -77,16 +73,13 @@ function createMemoryStore() {
 
   async function save() {
     memory.updatedAt = now();
-    for (const key of ["goals","projects","contacts","opportunities","content","decisions","learnings","facts","runs","blockers"]) memory[key] = bounded(memory[key]);
-    memory.controlPlane.recordCounts = Object.fromEntries(["goals","projects","contacts","opportunities","content","decisions","learnings","facts","runs","blockers"].map(k => [k, memory[k].length]));
+    for (const key of ["goals","projects","contacts","contactHistory","opportunities","content","decisions","learnings","facts","runs","blockers"]) memory[key] = bounded(memory[key]);
+    memory.controlPlane.recordCounts = Object.fromEntries(["goals","projects","contacts","contactHistory","opportunities","content","decisions","learnings","facts","runs","blockers"].map(k => [k, memory[k].length]));
     if (pool) {
       await pool.query(`INSERT INTO zoz_ai_memory(id,memory,updated_at) VALUES(1,$1::jsonb,now()) ON CONFLICT(id) DO UPDATE SET memory=EXCLUDED.memory,updated_at=now()`, [JSON.stringify(memory)]);
       return { durable: true, provider: "postgresql" };
     }
-    if (kvUrl && kvToken) {
-      await kvSave(memory);
-      return { durable: true, provider: "upstash_redis_rest" };
-    }
+    if (kvUrl && kvToken) { await kvSave(memory); return { durable: true, provider: "upstash_redis_rest" }; }
     return { durable: false, provider: "process_memory" };
   }
 
@@ -98,26 +91,19 @@ function createMemoryStore() {
     await save();
     return item;
   }
-  async function recordRun(run) {
-    memory.runs.push({ id: run.id || id("run"), ...run, at: now() });
+
+  async function rememberContactEvent(data) {
+    const item = { id: data.id || id("contact"), ...data, timestamp: data.timestamp || now() };
+    memory.contactHistory.push(item);
     await save();
-    return memory.runs[memory.runs.length - 1];
+    return item;
   }
-  async function setChannel(name, state) {
-    memory.channelState[name] = { ...memory.channelState[name], ...state, updatedAt: now() };
-    await save();
-    return memory.channelState[name];
-  }
-  async function setControlPlane(data) {
-    memory.controlPlane = { ...memory.controlPlane, ...data, updatedAt: now() };
-    await save();
-    return memory.controlPlane;
-  }
-  function status() {
-    return { durable: durableProvider !== "process_memory", provider: durableProvider, key: kvKey, lastReconciledAt: memory.controlPlane.lastReconciledAt, recordCounts: memory.controlPlane.recordCounts };
-  }
+  async function recordRun(run) { memory.runs.push({ id: run.id || id("run"), ...run, at: now() }); await save(); return memory.runs[memory.runs.length - 1]; }
+  async function setChannel(name, state) { memory.channelState[name] = { ...memory.channelState[name], ...state, updatedAt: now() }; await save(); return memory.channelState[name]; }
+  async function setControlPlane(data) { memory.controlPlane = { ...memory.controlPlane, ...data, updatedAt: now() }; await save(); return memory.controlPlane; }
+  function status() { return { durable: durableProvider !== "process_memory", provider: durableProvider, key: kvKey, lastReconciledAt: memory.controlPlane.lastReconciledAt, recordCounts: memory.controlPlane.recordCounts }; }
   function snapshot() { return JSON.parse(JSON.stringify(memory)); }
-  return { durable: durableProvider !== "process_memory", provider: durableProvider, init, load, save, remember, recordRun, setChannel, setControlPlane, status, snapshot };
+  return { durable: durableProvider !== "process_memory", provider: durableProvider, init, load, save, remember, rememberContactEvent, recordRun, setChannel, setControlPlane, status, snapshot };
 }
 
 module.exports = { createMemoryStore, blankMemory, MEMORY_VERSION };
