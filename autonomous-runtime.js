@@ -44,18 +44,23 @@ async function runAutonomousRuntime(trigger = "scheduled") {
   const reconciliation = await reconcileExistingState(memory);
   const core = createAutonomyCore(memory);
   const heartbeat = await core.heartbeat({ trigger });
-  let media;
-  try {
-    media = await runMediaProductionAgent(memory);
-  } catch (error) {
-    media = { ok: false, stage: "media_runtime_exception", reason: String(error?.message || error).slice(0, 300), retryable: true };
-  }
+
+  // Generate/plan channel work before media production so a new YouTube draft
+  // can enter rendering during the same autonomous heartbeat.
   let agents;
   try {
     agents = await executeAutonomousAgents(memory);
   } catch (error) {
     agents = [{ agent: "runtime", result: { ok: false, stage: "agent_runtime_exception", reason: String(error?.message || error).slice(0, 300), retryable: true } }];
   }
+
+  let media;
+  try {
+    media = await runMediaProductionAgent(memory);
+  } catch (error) {
+    media = { ok: false, stage: "media_runtime_exception", reason: String(error?.message || error).slice(0, 300), retryable: true };
+  }
+
   const snapshot = await memory.load();
   const blockers = [...reconciliation.blockers];
   const leadFailure = agents.find(x => x.agent === "lead_generation" && !x.result?.ok);
