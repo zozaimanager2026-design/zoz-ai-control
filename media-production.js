@@ -90,8 +90,8 @@ async function publishWithUploadPost(content, videoUrl) {
 
 async function runMediaProductionAgent(memoryStore) {
   const memory = await memoryStore.load();
-  const active = memory.content.filter(x => x.goalKey === "youtube_growth" && !["published", "failed"].includes(x.status));
-  const pendingRender = active.find(x => x.renderProjectId && !x.videoUrl);
+  const active = memory.content.filter(x => x.goalKey === "youtube_growth" && !["published"].includes(x.status));
+  const pendingRender = active.find(x => x.renderProjectId && !x.videoUrl && x.status !== "failed");
   if (pendingRender) {
     const polled = await pollRender(pendingRender.renderProjectId);
     if (polled.stage === "render_ready") {
@@ -101,7 +101,10 @@ async function runMediaProductionAgent(memoryStore) {
       await memoryStore.remember("content", { ...pendingRender, status: published ? "published" : "ready", videoUrl: polled.videoUrl, renderStatus: "done", renderedAt: now(), publication: publication || { stage: "publish_not_requested" } });
       return { ok: publication ? publication.ok : true, stage: published ? "published" : "render_ready", contentId: pendingRender.id, videoUrl: polled.videoUrl, publication };
     }
-    if (polled.stage === "render_failed") await memoryStore.remember("content", { ...pendingRender, status: "failed", renderStatus: polled.status, renderError: polled.reason || polled.movie?.message || null, failedAt: now() });
+    if (polled.stage === "render_failed") {
+      await memoryStore.remember("content", { ...pendingRender, status: "planned", renderProjectId: null, renderStatus: "retry_required", renderError: polled.reason || polled.movie?.message || null, retryAt: now() });
+      return { ok: false, stage: "render_failed_retry_scheduled", contentId: pendingRender.id, status: polled.status || null, reason: polled.reason || null };
+    }
     return { ok: polled.ok, stage: polled.stage, contentId: pendingRender.id, status: polled.status || null, reason: polled.reason || null };
   }
   const readyToPublish = active.find(x => x.videoUrl && ["ready", "render_ready"].includes(x.status));
@@ -111,12 +114,12 @@ async function runMediaProductionAgent(memoryStore) {
     if (published) await memoryStore.remember("content", { ...readyToPublish, status: "published", publication, publishedAt: now() });
     return { ok: publication.ok, stage: published ? "published" : publication.stage, contentId: readyToPublish.id, publication };
   }
-  const draft = active.find(x => ["planned", "draft"].includes(x.status));
+  const draft = active.find(x => ["planned", "draft", "failed"].includes(x.status) && !x.renderProjectId);
   if (!draft) return { ok: true, stage: "no_content_to_render" };
   if (!rendererConfigured()) return { ok: false, stage: "needs_renderer", reason: "J2V_API_KEY_missing", contentId: draft.id };
   const submitted = await submitRender(draft);
   if (!submitted.ok) return { ...submitted, contentId: draft.id };
-  await memoryStore.remember("content", { ...draft, status: "rendering", renderProjectId: submitted.projectId, renderSubmittedAt: submitted.submittedAt });
+  await memoryStore.remember("content", { ...draft, status: "rendering", renderProjectId: submitted.projectId, renderSubmittedAt: submitted.submittedAt, renderStatus: "submitted" });
   return { ok: true, stage: "render_submitted", contentId: draft.id, projectId: submitted.projectId };
 }
 
