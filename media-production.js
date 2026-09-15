@@ -35,9 +35,9 @@ function movieFor(content) {
     scenes: [{
       comment: "ZOZ AI autonomous short",
       elements: [
-        { type: "text", text: title, style: "001", settings: { "font-size": "56px", "font-weight": "700", "vertical-position": "top", "horizontal-position": "center" } },
+        { type: "text", text: title, style: "001", settings: { "font-size": 56, "font-weight": 700, "vertical-position": "top", "horizontal-position": "center" } },
         { type: "voice", text: narration, model: process.env.J2V_VOICE_MODEL || "azure", voice: process.env.J2V_VOICE || "ar-SA-HamedNeural" },
-        { type: "subtitles", language: "ar", settings: { "font-size": "42px", "font-weight": "700", "vertical-position": "bottom", "horizontal-position": "center" } }
+        { type: "subtitles", language: "ar", settings: { "font-size": 42, "font-weight": 700, "vertical-position": "bottom", "horizontal-position": "center" } }
       ]
     }]
   };
@@ -52,13 +52,7 @@ async function submitRender(content) {
     body: JSON.stringify(movieFor(content))
   });
   if (!response.ok || !response.body?.project) {
-    return {
-      ok: false,
-      stage: "render_submit_failed",
-      status: response.status,
-      reason: response.body?.message || response.body?.error || response.body?.text || "json2video_submit_failed",
-      response: response.body
-    };
+    return { ok: false, stage: "render_submit_failed", status: response.status, reason: response.body?.message || response.body?.error || response.body?.text || "json2video_submit_failed", response: response.body };
   }
   return { ok: true, stage: "render_submitted", projectId: response.body.project, submittedAt: now() };
 }
