@@ -51,7 +51,15 @@ async function submitRender(content) {
     headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify(movieFor(content))
   });
-  if (!response.ok || !response.body?.project) return { ok: false, stage: "render_submit_failed", status: response.status, response: response.body };
+  if (!response.ok || !response.body?.project) {
+    return {
+      ok: false,
+      stage: "render_submit_failed",
+      status: response.status,
+      reason: response.body?.message || response.body?.error || response.body?.text || "json2video_submit_failed",
+      response: response.body
+    };
+  }
   return { ok: true, stage: "render_submitted", projectId: response.body.project, submittedAt: now() };
 }
 
@@ -59,10 +67,10 @@ async function pollRender(projectId) {
   const apiKey = process.env.J2V_API_KEY || process.env.JSON2VIDEO_API_KEY;
   if (!apiKey) return { ok: false, stage: "needs_renderer", reason: "J2V_API_KEY_missing" };
   const response = await fetchJson(`https://api.json2video.com/v2/movies?project=${encodeURIComponent(projectId)}`, { headers: { "x-api-key": apiKey } });
-  if (!response.ok) return { ok: false, stage: "render_poll_failed", status: response.status, response: response.body };
+  if (!response.ok) return { ok: false, stage: "render_poll_failed", status: response.status, reason: response.body?.message || response.body?.error || response.body?.text || "json2video_poll_failed", response: response.body };
   const movie = response.body?.movie || {};
   if (movie.status === "done" && movie.url) return { ok: true, stage: "render_ready", videoUrl: movie.url, movie };
-  if (["error", "timeout"].includes(movie.status)) return { ok: false, stage: "render_failed", status: movie.status, movie };
+  if (["error", "timeout"].includes(movie.status)) return { ok: false, stage: "render_failed", status: movie.status, reason: movie.message || movie.error || "json2video_render_failed", movie };
   return { ok: true, stage: "render_pending", status: movie.status || "processing", movie };
 }
 
@@ -80,23 +88,10 @@ async function publishWithUploadPost(content, videoUrl) {
   form.append("privacyStatus", publicPublish ? "public" : "private");
   form.append("async_upload", "true");
   form.append("external_id", String(content.id || `zoz-content-${Date.now()}`));
-  const response = await fetchJson("https://api.upload-post.com/api/upload", {
-    method: "POST",
-    headers: { Authorization: `Apikey ${process.env.UPLOAD_POST_API_KEY}` },
-    body: form
-  });
-  if (!response.ok) return { ok: false, stage: "publish_failed", status: response.status, response: response.body };
+  const response = await fetchJson("https://api.upload-post.com/api/upload", { method: "POST", headers: { Authorization: `Apikey ${process.env.UPLOAD_POST_API_KEY}` }, body: form });
+  if (!response.ok) return { ok: false, stage: "publish_failed", status: response.status, reason: response.body?.message || response.body?.error || response.body?.text || "upload_post_publish_failed", response: response.body };
   const youtube = response.body?.results?.youtube || {};
-  return {
-    ok: youtube.success !== false,
-    stage: youtube.success === false ? "publish_failed" : "publish_submitted",
-    requestId: response.body?.request_id || response.body?.requestId || null,
-    jobId: response.body?.job_id || response.body?.jobId || null,
-    videoId: youtube.post_id || youtube.video_id || null,
-    url: youtube.url || null,
-    privacyStatus: publicPublish ? "public" : "private",
-    response: response.body
-  };
+  return { ok: youtube.success !== false, stage: youtube.success === false ? "publish_failed" : "publish_submitted", requestId: response.body?.request_id || response.body?.requestId || null, jobId: response.body?.job_id || response.body?.jobId || null, videoId: youtube.post_id || youtube.video_id || null, url: youtube.url || null, privacyStatus: publicPublish ? "public" : "private", response: response.body };
 }
 
 async function runMediaProductionAgent(memoryStore) {
@@ -107,24 +102,13 @@ async function runMediaProductionAgent(memoryStore) {
     const polled = await pollRender(pendingRender.renderProjectId);
     if (polled.stage === "render_ready") {
       let publication = null;
-      if (process.env.ZOZ_AUTO_PUBLISH_YOUTUBE === "true") {
-        publication = await publishWithUploadPost(pendingRender, polled.videoUrl);
-      }
+      if (process.env.ZOZ_AUTO_PUBLISH_YOUTUBE === "true") publication = await publishWithUploadPost(pendingRender, polled.videoUrl);
       const published = publication?.ok === true && ["publish_submitted", "published"].includes(publication.stage);
-      await memoryStore.remember("content", {
-        ...pendingRender,
-        status: published ? "published" : "ready",
-        videoUrl: polled.videoUrl,
-        renderStatus: "done",
-        renderedAt: now(),
-        publication: publication || { stage: "publish_not_requested" }
-      });
+      await memoryStore.remember("content", { ...pendingRender, status: published ? "published" : "ready", videoUrl: polled.videoUrl, renderStatus: "done", renderedAt: now(), publication: publication || { stage: "publish_not_requested" } });
       return { ok: publication ? publication.ok : true, stage: published ? "published" : "render_ready", contentId: pendingRender.id, videoUrl: polled.videoUrl, publication };
     }
-    if (polled.stage === "render_failed") {
-      await memoryStore.remember("content", { ...pendingRender, status: "failed", renderStatus: polled.status, renderError: polled.movie?.message || null, failedAt: now() });
-    }
-    return { ok: polled.ok, stage: polled.stage, contentId: pendingRender.id, status: polled.status || null };
+    if (polled.stage === "render_failed") await memoryStore.remember("content", { ...pendingRender, status: "failed", renderStatus: polled.status, renderError: polled.reason || polled.movie?.message || null, failedAt: now() });
+    return { ok: polled.ok, stage: polled.stage, contentId: pendingRender.id, status: polled.status || null, reason: polled.reason || null };
   }
   const readyToPublish = active.find(x => x.videoUrl && ["ready", "render_ready"].includes(x.status));
   if (readyToPublish && process.env.ZOZ_AUTO_PUBLISH_YOUTUBE === "true") {
