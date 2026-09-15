@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZOZ AI — الأعمال الإلكترونية</title>
+<style>
+:root{font-family:Arial,sans-serif;color:#172033;background:#f5f7fa}body{margin:0}header{background:#111827;color:#fff;padding:24px}main{max-width:1200px;margin:auto;padding:18px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}.card,.panel{background:#fff;border-radius:12px;padding:16px;box-shadow:0 2px 10px #00000012}.card h3{margin-top:0}.tag{display:inline-block;background:#e8eef6;border-radius:999px;padding:4px 9px;font-size:12px;margin:3px}.safe{border-right:4px solid #15803d}.approval{border-right:4px solid #b45309}button{background:#111827;color:#fff;border:0;border-radius:8px;padding:10px 14px;cursor:pointer}input,textarea,select{width:100%;box-sizing:border-box;padding:9px;margin:5px 0 10px;border:1px solid #ccd4df;border-radius:8px;font:inherit}pre{white-space:pre-wrap;background:#f1f5f9;padding:12px;border-radius:8px;overflow:auto}.small{color:#64748b;font-size:13px}.status{font-weight:bold}.bar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.item{padding:10px;border-bottom:1px solid #e5e7eb}.item:last-child{border-bottom:0}.notice{padding:12px;background:#fff7ed;border-radius:8px;margin:12px 0}
+</style></head>
+<body>
+<header><h1>ZOZ AI — قسم الأعمال الإلكترونية</h1><div>Intelligence • Automation • Execution • Autonomy</div><p class="small" style="color:#cbd5e1">مساحة تشغيل خدمات رقمية للعملاء وتحويلها إلى مشاريع قابلة للتنفيذ والتسليم والربح.</p></header>
+<main>
+<div class="bar"><button onclick="refresh()">تحديث الحالة</button><button onclick="runSafeCycle()">فحص دورة الأتمتة</button><a href="/" style="padding:10px 14px">العودة للوحة ZOZ AI</a></div>
+<div class="notice">قاعدة الحماية: التنفيذ الآمن يتم تلقائيًا حيثما كان ممكنًا. الدفع والشراء والتحويل واستلام الأموال لا تُنفذ تلقائيًا وتظل خلف موافقة بشرية.</div>
+<section class="grid" id="services"></section>
+<section class="panel" style="margin-top:16px"><h2>مسار تنفيذ مشروع العميل</h2><div class="grid">
+<div><strong>1. اكتشاف</strong><p class="small">فرصة/عميل ومتطلبات المشروع.</p></div><div><strong>2. تحليل</strong><p class="small">تحديد الخدمة والأدوات والمدة.</p></div><div><strong>3. عرض</strong><p class="small">تجهيز عرض مناسب للعميل.</p></div><div><strong>4. تنفيذ</strong><p class="small">استخدام الأدوات المتصلة.</p></div><div><strong>5. جودة</strong><p class="small">مراجعة قبل التسليم.</p></div><div><strong>6. تسليم</strong><p class="small">تسليم الملفات/الرابط والنتيجة.</p></div><div><strong>7. متابعة</strong><p class="small">تسجيل النتيجة وفرصة العمل التالي.</p></div></div></section>
+<section class="panel" style="margin-top:16px"><h2>إنشاء فرصة عمل</h2><label>عنوان المشروع</label><input id="title" placeholder="مثال: تصميم هوية بصرية لمتجر"></label><label>الوصف</label><textarea id="description" placeholder="احتياج العميل ومتطلبات التسليم"></textarea><label>مصدر الفرصة</label><input id="source" value="digital-business"><label>درجة الفرصة 0-100</label><input id="score" type="number" min="0" max="100" value="80"><button onclick="createOpportunity()">تسجيل الفرصة</button><pre id="result">جاهز.</pre></section>
+<section class="panel" style="margin-top:16px"><h2>حالة التشغيل والموصلات</h2><pre id="state">جاري التحميل...</pre></section>
+<section class="panel" style="margin-top:16px"><h2>الفرص الحالية</h2><div id="opportunities">جاري التحميل...</div></section>
+</main>
+<script>
+const services=[
+['الهوية البصرية','Logo • Brand Identity • ألوان • خطوط • Social/YouTube assets','Canva','safe'],
+['تصميم المواقع','Landing pages • مواقع شركات • متاجر • صفحات خدمات','Vercel / التطوير','safe'],
+['الأتمتة','CRM • workflows • متابعة • تنبيهات • تقارير','ZOZ Automation','safe'],
+['المحتوى','YouTube • TikTok • LinkedIn • كتابة • تصميم • نشر','Canva + القنوات','safe'],
+['الخدمات الرقمية','تنظيم بيانات • إعداد متاجر • خدمات افتراضية • تحسين عمليات','الأدوات المتصلة','safe'],
+['اكتشاف العملاء','بحث فرص • تحليل احتياج • عروض • متابعة','CRM + قنوات التواصل','safe'],
+['تنفيذ وتسليم','تنفيذ • QA • packaging • delivery • follow-up','Execution Engine','safe'],
+['الربح والاعتماد','تسعير • تكلفة • ربح • موافقات مالية','Human Approval Gate','approval']
+];
+document.getElementById('services').innerHTML=services.map(s=>`<article class="card ${s[3]}"><h3>${s[0]}</h3><p>${s[1]}</p><span class="tag">${s[2]}</span><span class="tag">${s[3]==='approval'?'موافقة بشرية':'قابل للتنفيذ الآمن'}</span></article>`).join('');
+async function j(url,opt){const r=await fetch(url,opt);if(!r.ok)throw Error('HTTP '+r.status);return r.json()}
+async function refresh(){try{const [s,c,o]=await Promise.all([j('/api/automation/status'),j('/api/connectors/status'),j('/api/business/opportunities')]);document.getElementById('state').textContent=JSON.stringify({automation:s,connectors:c},null,2);renderOpp(o)}catch(e){document.getElementById('state').textContent='تعذر تحميل الحالة: '+e.message}}
+function renderOpp(items){document.getElementById('opportunities').innerHTML=items.length?items.map(o=>`<div class="item"><strong>${esc(o.title)}</strong> — Score ${esc(o.score)}<br><span class="small">${esc(o.description)} | ${esc(o.status)}</span></div>`).join(''):'لا توجد فرص مسجلة بعد.'}
+function esc(v){return String(v??'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+async function createOpportunity(){try{const body={title:document.getElementById('title').value,description:document.getElementById('description').value,source:document.getElementById('source').value,score:Number(document.getElementById('score').value)};const r=await j('/api/business/opportunities',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});document.getElementById('result').textContent=JSON.stringify(r,null,2);refresh()}catch(e){document.getElementById('result').textContent='فشل التسجيل: '+e.message}}
+async function runSafeCycle(){document.getElementById('result').textContent='دورة الأتمتة محمية بـ CRON_SECRET ولا يمكن تشغيلها من الواجهة بدون اعتماد الخادم. استخدم Railway Cron أو مسار التشغيل المصرح.';try{const r=await j('/api/automation/status');document.getElementById('state').textContent=JSON.stringify(r,null,2)}catch(e){}}
+refresh();
+</script></body></html>
