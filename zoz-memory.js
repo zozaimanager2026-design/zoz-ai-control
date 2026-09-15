@@ -87,7 +87,9 @@ function createMemoryStore() {
     const allowed = new Set(["goals","projects","contacts","opportunities","content","decisions","learnings","facts"]);
     if (!allowed.has(type)) throw new Error("unsupported_memory_type");
     const item = { id: data.id || id(type.slice(0, -1)), ...data, rememberedAt: now() };
-    memory[type].push(item);
+    const existingIndex = memory[type].findIndex(existing => existing.id === item.id);
+    if (existingIndex >= 0) memory[type][existingIndex] = { ...memory[type][existingIndex], ...item };
+    else memory[type].push(item);
     await save();
     return item;
   }
