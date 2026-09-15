@@ -15,7 +15,7 @@ async function reconcileExistingState(memory) {
     vercel: { configured: configured("VERCEL_TOKEN"), source: "runtime_env" },
     database: { configured: configured("DATABASE_URL") || configured("ZOZ_DATABASE_URL"), source: "runtime_env" },
     durableKv: { configured: configured("KV_REST_API_URL") || configured("UPSTASH_REDIS_REST_URL") || configured("ZOZ_KV_REST_API_URL"), source: "runtime_env" },
-    youtube: { configured: configured("YOUTUBE_ACCESS_TOKEN"), source: "runtime_env" },
+    youtube: { configured: configured("YOUTUBE_ACCESS_TOKEN") || configured("UPLOAD_POST_API_KEY"), source: configured("YOUTUBE_ACCESS_TOKEN") ? "youtube_api" : "upload_post" },
     aiAdapter: { configured: configured("ZOZ_AI_API_KEY") || configured("OPENAI_API_KEY"), source: "runtime_env" },
     leadSearch: { configured: configured("ZOZ_SEARCH_API_URL") && configured("ZOZ_SEARCH_API_KEY"), source: "runtime_env" },
     whatsapp: { configured: configured("WHATSAPP_ACCESS_TOKEN") || configured("PEACH_API_KEY"), source: "runtime_env" },
@@ -24,7 +24,7 @@ async function reconcileExistingState(memory) {
 
   const blockers = [];
   if (!memory.durable) blockers.push({ id: "durable_memory", priority: 1, reason: "No durable memory backend is configured" });
-  if (!integrations.youtube.configured) blockers.push({ id: "youtube_connection", priority: 1, reason: "YouTube server connector is not configured" });
+  if (!integrations.youtube.configured) blockers.push({ id: "youtube_connection", priority: 1, reason: "YouTube server connector is not configured; direct YouTube API or Upload-Post is required" });
   if (!integrations.leadSearch.configured) blockers.push({ id: "lead_search_adapter", priority: 2, reason: "No server-side lead search adapter is configured" });
 
   let nextAction = "reconcile_integrations_and_execute_highest_value_safe_action";
