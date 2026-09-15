@@ -14,36 +14,45 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Patch YouTube execution into server
         shell: python
         run: |
           from pathlib import Path
+          import re
           p = Path('server.js')
           s = p.read_text()
-          s = s.replace(
-              'const { buildPeachTemplatePayload, normalizePeachWebhook, publicWebhookAudit } = require("./peach");',
-              'const { buildPeachTemplatePayload, normalizePeachWebhook, publicWebhookAudit } = require("./peach");\nconst { youtubeConfigured, uploadYouTubeVideo, getYouTubeVideoStatus } = require("./youtube");'
-          )
-          verify_anchor = 'if (id === "database") return { id, status: persistence.enabled ? "configured_unverified" : "needs_setup", verified: false };'
-          verify_insert = '''if (id === "youtube") {\n      if (!youtubeConfigured()) return { id, status: "needs_setup", verified: false, reason: "YOUTUBE_ACCESS_TOKEN missing" };\n      const r = await fetchJson("https://www.googleapis.com/youtube/v3/channels?part=id,snippet,contentDetails&mine=true", { headers: { Authorization: `Bearer ${process.env.YOUTUBE_ACCESS_TOKEN}` } });\n      const result = { id, status: r.ok ? "verified" : "error", verified: r.ok, provider: "youtube", httpStatus: r.status, channelId: r.body?.items?.[0]?.id || null, detail: r.ok ? "YouTube OAuth credential verified" : "YouTube credential rejected" };\n      state.connectors.youtube.status = result.status;\n      state.connectors.youtube.automation = r.ok ? "ready" : "verification_failed";\n      audit("connector_verification", { id, status: result.status, verified: result.verified, provider: "youtube", channelId: result.channelId });\n      return result;\n    }\n    ''' + verify_anchor
+          changed = False
+          req = 'const { youtubeConfigured, uploadYouTubeVideo, getYouTubeVideoStatus } = require("./youtube");'
+          if req not in s:
+              anchor = 'const { buildPeachTemplatePayload, normalizePeachWebhook, publicWebhookAudit } = require("./peach");'
+              if anchor not in s: raise SystemExit('youtube_require_anchor_missing')
+              s = s.replace(anchor, anchor + '\n' + req, 1)
+              changed = True
           if 'if (id === "youtube")' not in s:
-              s = s.replace(verify_anchor, verify_insert)
-
-          cycle_anchor = 'async function runAutonomousCycle() {'
-          youtube_fn = '''async function executeYouTubeJob(job) {\n  if (!youtubeConfigured()) { job.status = "blocked"; audit("youtube_job_blocked", { jobId: job.id, reason: "youtube_access_token_missing" }); return { executed: false, reason: "youtube_access_token_missing" }; }\n  if (!job.filePath) { job.status = "blocked"; audit("youtube_job_blocked", { jobId: job.id, reason: "youtube_file_path_required" }); return { executed: false, reason: "youtube_file_path_required" }; }\n  const result = await uploadYouTubeVideo({ filePath: job.filePath, title: job.title, description: job.description, tags: job.tags, categoryId: job.categoryId, privacyStatus: job.privacyStatus || "private" });\n  audit("youtube_upload_attempt", { jobId: job.id, ok: result.ok, httpStatus: result.status, videoId: result.videoId || null });\n  if (!result.ok) { job.status = "failed"; job.error = result.error; return { executed: false, reason: result.error }; }\n  job.status = "uploaded"; job.videoId = result.videoId; job.uploadedAt = new Date().toISOString();\n  const verification = await getYouTubeVideoStatus(result.videoId);\n  job.verification = verification;\n  if (verification.ok) job.status = verification.processingStatus === "succeeded" ? "published" : "processing";\n  audit("youtube_upload_verified", { jobId: job.id, videoId: result.videoId, processingStatus: verification.processingStatus || null, privacyStatus: verification.privacyStatus || null });\n  return { executed: true, jobId: job.id, videoId: result.videoId, verification };\n}\n\n'''
+              anchor = 'if (id === "database") return { id, status: persistence.enabled ? "configured_unverified" : "needs_setup", verified: false };'
+              insert = '''if (id === "youtube") {\n      if (!youtubeConfigured()) return { id, status: "needs_setup", verified: false, reason: "YOUTUBE_ACCESS_TOKEN missing" };\n      const r = await fetchJson("https://www.googleapis.com/youtube/v3/channels?part=id,snippet,contentDetails&mine=true", { headers: { Authorization: `Bearer ${process.env.YOUTUBE_ACCESS_TOKEN}` } });\n      const result = { id, status: r.ok ? "verified" : "error", verified: r.ok, provider: "youtube", httpStatus: r.status, channelId: r.body?.items?.[0]?.id || null, detail: r.ok ? "YouTube OAuth credential verified" : "YouTube credential rejected" };\n      state.connectors.youtube.status = result.status;\n      state.connectors.youtube.automation = r.ok ? "ready" : "verification_failed";\n      audit("connector_verification", { id, status: result.status, verified: result.verified, provider: "youtube", channelId: result.channelId });\n      return result;\n    }\n    ''' + anchor
+              if anchor not in s: raise SystemExit('youtube_verify_anchor_missing')
+              s = s.replace(anchor, insert, 1)
+              changed = True
           if 'async function executeYouTubeJob(job)' not in s:
-              s = s.replace(cycle_anchor, youtube_fn + cycle_anchor)
-
-          old_loop = 'for (const job of state.jobs) if (["pending", "approved"].includes(job.status)) { const result = await executeSafeJob(job); if (result.executed) executed.push(result); else skipped.push({ jobId: job.id, reason: result.reason }); }'
-          new_loop = 'for (const job of state.jobs) if (["pending", "approved", "youtube_pending"].includes(job.status)) { const result = job.youtube ? await executeYouTubeJob(job) : await executeSafeJob(job); if (result.executed) executed.push(result); else skipped.push({ jobId: job.id, reason: result.reason }); }'
-          s = s.replace(old_loop, new_loop)
-
-          route_anchor = 'app.get("/api/automation/status",'
-          routes = '''app.post("/api/youtube/jobs", async (req, res) => { const denied = authorizeSecret(req, res, process.env.YOUTUBE_UPLOAD_SECRET || process.env.CRON_SECRET, "youtube_job_unauthorized"); if (denied) return; const body = req.body || {}; if (!body.filePath || !body.title) return res.status(400).json({ ok: false, error: "filePath_and_title_required" }); const job = { id: `youtube_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, title: String(body.title), description: String(body.description || ""), tags: Array.isArray(body.tags) ? body.tags.map(String) : [], categoryId: String(body.categoryId || "22"), privacyStatus: String(body.privacyStatus || "private"), filePath: String(body.filePath), youtube: true, status: "youtube_pending", createdAt: new Date().toISOString() }; state.jobs.push(job); audit("youtube_job_created", { jobId: job.id, title: job.title, privacyStatus: job.privacyStatus }); await saveState(); res.status(201).json(job); });\napp.get("/api/youtube/status/:videoId", async (req, res) => { const denied = authorizeSecret(req, res, process.env.YOUTUBE_UPLOAD_SECRET || process.env.CRON_SECRET, "youtube_status_unauthorized"); if (denied) return; res.json(await getYouTubeVideoStatus(req.params.videoId)); });\n\n''' + route_anchor
+              anchor = 'async function runAutonomousCycle() {'
+              fn = '''async function executeYouTubeJob(job) {\n  if (!youtubeConfigured()) { job.status = "blocked"; audit("youtube_job_blocked", { jobId: job.id, reason: "youtube_access_token_missing" }); return { executed: false, reason: "youtube_access_token_missing" }; }\n  if (!job.filePath) { job.status = "blocked"; audit("youtube_job_blocked", { jobId: job.id, reason: "youtube_file_path_required" }); return { executed: false, reason: "youtube_file_path_required" }; }\n  const result = await uploadYouTubeVideo({ filePath: job.filePath, title: job.title, description: job.description, tags: job.tags, categoryId: job.categoryId, privacyStatus: job.privacyStatus || "private" });\n  audit("youtube_upload_attempt", { jobId: job.id, ok: result.ok, httpStatus: result.status, videoId: result.videoId || null });\n  if (!result.ok) { job.status = "failed"; job.error = result.error; return { executed: false, reason: result.error }; }\n  job.status = "uploaded"; job.videoId = result.videoId; job.uploadedAt = new Date().toISOString();\n  const verification = await getYouTubeVideoStatus(result.videoId);\n  job.verification = verification;\n  if (verification.ok) job.status = verification.processingStatus === "succeeded" ? "published" : "processing";\n  audit("youtube_upload_verified", { jobId: job.id, videoId: result.videoId, processingStatus: verification.processingStatus || null, privacyStatus: verification.privacyStatus || null });\n  return { executed: true, jobId: job.id, videoId: result.videoId, verification };\n}\n\n'''
+              if anchor not in s: raise SystemExit('youtube_cycle_anchor_missing')
+              s = s.replace(anchor, fn + anchor, 1)
+              changed = True
+          if 'job.youtube ? await executeYouTubeJob(job)' not in s:
+              pattern = r'for \(const job of state\.jobs\) if \(\["pending", "approved"\]\.includes\(job\.status\)\) \{ const result = await executeSafeJob\(job\); if \(result\.executed\) executed\.push\(result\); else skipped\.push\(\{ jobId: job\.id, reason: result\.reason \}\); \}'
+              replacement = 'for (const job of state.jobs) if (["pending", "approved", "youtube_pending"].includes(job.status)) { const result = job.youtube ? await executeYouTubeJob(job) : await executeSafeJob(job); if (result.executed) executed.push(result); else skipped.push({ jobId: job.id, reason: result.reason }); }'
+              s, n = re.subn(pattern, replacement, s, count=1)
+              if n != 1: raise SystemExit('youtube_cycle_loop_missing')
+              changed = True
           if '/api/youtube/jobs' not in s:
-              s = s.replace(route_anchor, routes)
-
+              anchor = 'app.get("/api/automation/status",'
+              routes = '''app.post("/api/youtube/jobs", async (req, res) => { const denied = authorizeSecret(req, res, process.env.YOUTUBE_UPLOAD_SECRET || process.env.CRON_SECRET, "youtube_job_unauthorized"); if (denied) return; const body = req.body || {}; if (!body.filePath || !body.title) return res.status(400).json({ ok: false, error: "filePath_and_title_required" }); const job = { id: `youtube_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, title: String(body.title), description: String(body.description || ""), tags: Array.isArray(body.tags) ? body.tags.map(String) : [], categoryId: String(body.categoryId || "22"), privacyStatus: String(body.privacyStatus || "private"), filePath: String(body.filePath), youtube: true, status: "youtube_pending", createdAt: new Date().toISOString() }; state.jobs.push(job); audit("youtube_job_created", { jobId: job.id, title: job.title, privacyStatus: job.privacyStatus }); await saveState(); res.status(201).json(job); });\napp.get("/api/youtube/status/:videoId", async (req, res) => { const denied = authorizeSecret(req, res, process.env.YOUTUBE_UPLOAD_SECRET || process.env.CRON_SECRET, "youtube_status_unauthorized"); if (denied) return; res.json(await getYouTubeVideoStatus(req.params.videoId)); });\n\n''' + anchor
+              if anchor not in s: raise SystemExit('youtube_route_anchor_missing')
+              s = s.replace(anchor, routes, 1)
+              changed = True
+          if not changed: raise SystemExit('no_youtube_changes_needed')
           p.write_text(s)
       - name: Syntax check
         run: node --check server.js && node --check youtube.js
@@ -51,7 +60,7 @@ jobs:
         run: |
           git config user.name 'zoz-ai-bot'
           git config user.email 'zoz-ai-bot@users.noreply.github.com'
-          git add server.js youtube.js
+          git add server.js
           git diff --cached --quiet && exit 0
           git commit -m 'Activate YouTube execution'
           git push
