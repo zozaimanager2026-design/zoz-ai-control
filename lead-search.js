@@ -12,9 +12,6 @@ function overpassEndpoints() {
 }
 
 async function overpassSearch({ query = "محلات أدوات كهربائية مقاول كهرباء تشطيبات القاهرة", limit = 10 } = {}) {
-  // Cairo-area default bbox. OSM is a keyless fallback so ZOZ does not stop
-  // when a paid search API credential is unavailable. Multiple mirrors prevent
-  // one public Overpass endpoint outage from becoming a system blocker.
   const bbox = process.env.ZOZ_LEAD_BBOX || "29.80,31.05,30.25,31.70";
   const osmQuery = `
 [out:json][timeout:25];
@@ -88,6 +85,49 @@ out center tags;`;
   return { ok: false, source: "overpass", reason: "all_overpass_endpoints_failed", failures };
 }
 
+async function nominatimSearch({ query = "محلات أدوات كهربائية القاهرة مصر", limit = 10 } = {}) {
+  const endpoint = process.env.ZOZ_NOMINATIM_URL || "https://nominatim.openstreetmap.org/search";
+  const params = new URLSearchParams({
+    q: `${query} Cairo Egypt`,
+    format: "jsonv2",
+    addressdetails: "1",
+    limit: String(Math.max(1, Math.min(50, Number(limit) || 10)))
+  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try {
+    const r = await fetch(`${endpoint}?${params}`, {
+      headers: { "User-Agent": "ZOZ-AI-autonomous-lead-search/1.0" },
+      signal: controller.signal
+    });
+    const text = await r.text();
+    if (!r.ok) return { ok: false, source: "nominatim", reason: `http_${r.status}` };
+    let data;
+    try { data = JSON.parse(text); } catch { return { ok: false, source: "nominatim", reason: "invalid_json" }; }
+    const results = (Array.isArray(data) ? data : []).map((item) => ({
+      name: item.name || item.display_name?.split(",")[0] || "Business",
+      title: item.display_name || item.name || "Business",
+      source: "openstreetmap",
+      searchAdapter: "nominatim",
+      endpoint,
+      category: item.type || item.class || "business",
+      phone: null,
+      email: null,
+      website: null,
+      address: item.display_name || null,
+      latitude: item.lat ? Number(item.lat) : null,
+      longitude: item.lon ? Number(item.lon) : null,
+      query,
+      discoveredAt: now()
+    }));
+    return { ok: true, source: "openstreetmap", adapter: "nominatim", endpoint, results, fallbackTried: 1 };
+  } catch (error) {
+    return { ok: false, source: "nominatim", reason: error?.name === "AbortError" ? "timeout" : "network_error" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function searchLeads(options = {}) {
   const endpoint = process.env.ZOZ_SEARCH_API_URL;
   const key = process.env.ZOZ_SEARCH_API_KEY;
@@ -105,11 +145,14 @@ async function searchLeads(options = {}) {
       let body = null;
       try { body = text ? JSON.parse(text) : null; } catch { body = null; }
       if (r.ok && Array.isArray(body?.results)) return { ok: true, source: "configured_search_api", results: body.results };
-    } finally {
-      clearTimeout(timer);
-    }
+    } catch {}
+    finally { clearTimeout(timer); }
   }
-  return overpassSearch(options);
+  const overpass = await overpassSearch(options);
+  if (overpass.ok && overpass.results.length) return overpass;
+  const nominatim = await nominatimSearch(options);
+  if (nominatim.ok) return { ...nominatim, fallbackTried: (overpass.failures?.length || 0) + 1 };
+  return { ok: false, source: "openstreetmap", reason: "all_lead_search_adapters_failed", failures: [...(overpass.failures || []), nominatim.reason] };
 }
 
-module.exports = { searchLeads, overpassSearch };
+module.exports = { searchLeads, overpassSearch, nominatimSearch };
