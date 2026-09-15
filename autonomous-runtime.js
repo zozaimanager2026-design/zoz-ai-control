@@ -8,6 +8,11 @@ const id = (p) => `${p}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
 
 function configured(name) { return Boolean(process.env[name]); }
 
+function leadSearchConfigured() {
+  if (process.env.ZOZ_DISABLE_BUILTIN_LEAD_SEARCH === "true") return configured("ZOZ_SEARCH_API_URL") && configured("ZOZ_SEARCH_API_KEY");
+  return true; // Built-in OpenStreetMap/Overpass fallback requires no credential.
+}
+
 async function reconcileExistingState(memory) {
   const snapshot = await memory.load();
   const integrations = {
@@ -17,7 +22,7 @@ async function reconcileExistingState(memory) {
     durableKv: { configured: configured("KV_REST_API_URL") || configured("UPSTASH_REDIS_REST_URL") || configured("ZOZ_KV_REST_API_URL"), source: "runtime_env" },
     youtube: { configured: configured("YOUTUBE_ACCESS_TOKEN") || configured("UPLOAD_POST_API_KEY"), source: configured("YOUTUBE_ACCESS_TOKEN") ? "youtube_api" : "upload_post" },
     aiAdapter: { configured: configured("ZOZ_AI_API_KEY") || configured("OPENAI_API_KEY"), source: "runtime_env" },
-    leadSearch: { configured: configured("ZOZ_SEARCH_API_URL") && configured("ZOZ_SEARCH_API_KEY"), source: "runtime_env" },
+    leadSearch: { configured: leadSearchConfigured(), source: configured("ZOZ_SEARCH_API_URL") && configured("ZOZ_SEARCH_API_KEY") ? "configured_search_api" : "openstreetmap_overpass_builtin" },
     whatsapp: { configured: configured("WHATSAPP_ACCESS_TOKEN") || configured("PEACH_API_KEY"), source: "runtime_env" },
     uploadPost: { configured: configured("UPLOAD_POST_API_KEY"), source: "runtime_env" }
   };
@@ -58,7 +63,7 @@ async function runAutonomousRuntime(trigger = "scheduled") {
   const snapshot = await memory.load();
   const blockers = [...reconciliation.blockers];
   if (agents.some(x => x.agent === "youtube" && x.result?.stage === "connection") && !blockers.some(x => x.id === "youtube_connection")) blockers.push({ id: "youtube_connection", priority: 1, reason: "YouTube connector is not configured for the server runtime" });
-  if (agents.some(x => x.agent === "lead_generation" && x.result?.reason === "ZOZ_SEARCH_API_URL_and_ZOZ_SEARCH_API_KEY_missing") && !blockers.some(x => x.id === "lead_search_adapter")) blockers.push({ id: "lead_search_adapter", priority: 2, reason: "No server-side lead search adapter configured" });
+  if (agents.some(x => x.agent === "lead_generation" && !x.result?.ok) && !blockers.some(x => x.id === "lead_search_adapter")) blockers.push({ id: "lead_search_adapter", priority: 2, reason: "Lead discovery adapter failed during the autonomous run" });
   const run = await memory.recordRun({ id: id("runtime"), mode: "autonomous_runtime", trigger, reconciliation, heartbeat, agents, blockers, completedAt: now() });
   return { ok: true, autonomous: memory.durable && blockers.length === 0, durableMemory: memory.durable, memoryStatus, reconciliation, heartbeat, agents, blockers, lastRun: run, snapshot };
 }
