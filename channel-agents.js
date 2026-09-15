@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { searchLeads } = require("./lead-search");
 const now = () => new Date().toISOString();
 const id = (p) => `${p}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
 
@@ -123,14 +124,21 @@ async function runLeadAgent(memoryStore) {
   const open = memory.opportunities.filter(x => ["new", "qualified", "active"].includes(x.status) && x.goalKey === "lead_generation");
   if (open.length) return { ok: true, stage: "existing_opportunities", count: open.length };
   const query = process.env.ZOZ_LEAD_RESEARCH_QUERY || "محلات أدوات كهربائية مقاول كهرباء تشطيبات القاهرة";
-  const endpoint = process.env.ZOZ_SEARCH_API_URL;
-  const key = process.env.ZOZ_SEARCH_API_KEY;
-  if (!endpoint || !key) return { ok: false, stage: "research", reason: "ZOZ_SEARCH_API_URL_and_ZOZ_SEARCH_API_KEY_missing" };
-  const r = await fetchJson(endpoint, { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ query, limit: 10 }) });
-  if (!r.ok) return { ok: false, stage: "research", reason: "lead_search_failed", status: r.status };
-  const leads = Array.isArray(r.body?.results) ? r.body.results : [];
-  for (const lead of leads) await memoryStore.remember("opportunities", { goalKey: "lead_generation", status: "new", source: lead.source || "search", title: lead.title || lead.name || "Lead", contact: lead.phone || lead.email || lead.url || null, evidence: lead, discoveredAt: now() });
-  return { ok: true, stage: "leads_saved", count: leads.length };
+  const result = await searchLeads({ query, limit: 10 });
+  if (!result.ok) return { ok: false, stage: "research", reason: result.reason || "lead_search_failed", status: result.status || null, source: result.source || null };
+  const leads = Array.isArray(result.results) ? result.results : [];
+  for (const lead of leads) {
+    await memoryStore.remember("opportunities", {
+      goalKey: "lead_generation",
+      status: "new",
+      source: lead.source || result.source || "search",
+      title: lead.title || lead.name || "Lead",
+      contact: lead.phone || lead.email || lead.website || null,
+      evidence: lead,
+      discoveredAt: now()
+    });
+  }
+  return { ok: true, stage: "leads_saved", count: leads.length, source: result.source };
 }
 
 async function executeAutonomousAgents(memoryStore) {
