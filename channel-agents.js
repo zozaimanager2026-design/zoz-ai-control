@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const { searchLeads } = require("./lead-search");
+const { shouldSuppress, createContactEvent } = require("./contact-history");
 const now = () => new Date().toISOString();
 const id = (p) => `${p}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
 
@@ -8,85 +9,19 @@ async function fetchJson(url, options = {}) {
   const timer = setTimeout(() => controller.abort(), 12000);
   try {
     const r = await fetch(url, { ...options, signal: controller.signal });
-    const text = await r.text();
-    let body = null;
+    const text = await r.text(); let body = null;
     try { body = text ? JSON.parse(text) : null; } catch { body = { text: text.slice(0, 500) }; }
     return { ok: r.ok, status: r.status, body };
   } finally { clearTimeout(timer); }
 }
-
-function youtubeConfigured() {
-  return Boolean(process.env.YOUTUBE_ACCESS_TOKEN) || Boolean(process.env.UPLOAD_POST_API_KEY);
-}
+function youtubeConfigured() { return Boolean(process.env.YOUTUBE_ACCESS_TOKEN) || Boolean(process.env.UPLOAD_POST_API_KEY); }
 function uploadPostConfigured() { return Boolean(process.env.UPLOAD_POST_API_KEY); }
-
-async function uploadPostProfileState() {
-  if (!uploadPostConfigured()) return { configured: false, status: "needs_setup" };
-  const r = await fetchJson("https://api.upload-post.com/api/uploadposts/me", { headers: { Authorization: `Apikey ${process.env.UPLOAD_POST_API_KEY}` } });
-  return r.ok ? { configured: true, status: "verified", email: r.body?.email || null, plan: r.body?.plan || null } : { configured: true, status: "error", httpStatus: r.status };
-}
-
-async function uploadPostPublishYouTube({ videoUrl, title, description, user }) {
-  if (!uploadPostConfigured()) return { ok: false, configured: false, reason: "UPLOAD_POST_API_KEY_missing" };
-  if (!videoUrl) return { ok: false, configured: true, reason: "video_url_missing" };
-  const form = new FormData();
-  form.append("video", String(videoUrl)); form.append("title", String(title || "ZOZ AI")); form.append("description", String(description || ""));
-  form.append("user", String(user || process.env.UPLOAD_POST_USER || "ZozAI")); form.append("platform[]", "youtube"); form.append("async_upload", "true");
-  const r = await fetch("https://api.upload-post.com/api/upload", { method: "POST", headers: { Authorization: `Apikey ${process.env.UPLOAD_POST_API_KEY}` }, body: form });
-  const text = await r.text(); let body = null; try { body = text ? JSON.parse(text) : null; } catch { body = { text: text.slice(0, 500) }; }
-  return r.ok ? { ok: true, requestId: body?.request_id || null, response: body } : { ok: false, configured: true, status: r.status, reason: "upload_post_publish_failed", response: body };
-}
-
-async function youtubeResearch(query, maxResults = 5) {
-  if (!process.env.YOUTUBE_ACCESS_TOKEN) return { ok: false, configured: false, reason: "YOUTUBE_ACCESS_TOKEN_missing" };
-  const params = new URLSearchParams({ part: "snippet", q: String(query), type: "video", maxResults: String(Math.min(25, maxResults)), order: "relevance" });
-  const r = await fetchJson(`https://www.googleapis.com/youtube/v3/search?${params}`, { headers: { Authorization: `Bearer ${process.env.YOUTUBE_ACCESS_TOKEN}` } });
-  if (!r.ok) return { ok: false, configured: true, status: r.status, reason: "youtube_search_failed" };
-  return { ok: true, items: (r.body.items || []).map(x => ({ id: x.id?.videoId, title: x.snippet?.title, description: x.snippet?.description, channel: x.snippet?.channelTitle, publishedAt: x.snippet?.publishedAt })) };
-}
-
-async function generateText(prompt) {
-  const endpoint = process.env.ZOZ_AI_API_URL || process.env.OPENAI_COMPATIBLE_API_URL;
-  const key = process.env.ZOZ_AI_API_KEY || process.env.OPENAI_API_KEY;
-  if (!endpoint || !key) return { ok: false, configured: false, reason: "ZOZ_AI_API_URL_and_ZOZ_AI_API_KEY_missing" };
-  const r = await fetchJson(endpoint, { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: process.env.ZOZ_AI_MODEL || "gpt-4.1-mini", messages: [{ role: "system", content: "You are ZOZ AI's autonomous content operator. Produce useful, original, factual business content. Never invent product specifications." }, { role: "user", content: prompt }], temperature: 0.7 }) });
-  if (!r.ok) return { ok: false, configured: true, status: r.status, reason: "ai_generation_failed" };
-  const text = r.body?.choices?.[0]?.message?.content || r.body?.output_text || r.body?.text || "";
-  return text ? { ok: true, text } : { ok: false, configured: true, reason: "ai_generation_empty" };
-}
-
-async function youtubeChannelState() {
-  if (process.env.YOUTUBE_ACCESS_TOKEN) {
-    const r = await fetchJson("https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&mine=true", { headers: { Authorization: `Bearer ${process.env.YOUTUBE_ACCESS_TOKEN}` } });
-    return r.ok ? { configured: true, status: "verified", channel: r.body.items?.[0] || null, adapter: "youtube_api" } : { configured: true, status: "error", httpStatus: r.status, adapter: "youtube_api" };
-  }
-  if (uploadPostConfigured()) return { ...(await uploadPostProfileState()), adapter: "upload_post" };
-  return { configured: false, status: "needs_setup" };
-}
-
-async function runYouTubeAgent(memoryStore) {
-  const state = await youtubeChannelState();
-  await memoryStore.setChannel("youtube", { ...state, lastCheckedAt: now() });
-  if (!state.configured || state.status !== "verified") return { ok: false, stage: "connection", ...state };
-  const memory = await memoryStore.load();
-  const existing = memory.content.find(x => x.goalKey === "youtube_growth" && ["planned", "draft", "ready"].includes(x.status));
-  if (existing) {
-    if (state.adapter === "upload_post" && existing.videoUrl && existing.status !== "published") {
-      const publish = await uploadPostPublishYouTube({ videoUrl: existing.videoUrl, title: existing.title, description: existing.description || existing.body, user: process.env.UPLOAD_POST_USER || "ZozAI" });
-      if (publish.ok) { existing.status = "published"; existing.publishedAt = now(); existing.publishRequestId = publish.requestId; await memoryStore.remember("content", existing); return { ok: true, stage: "published", contentId: existing.id, publishRequestId: publish.requestId, adapter: "upload_post" }; }
-      return { ok: false, stage: "publish", contentId: existing.id, publish };
-    }
-    return { ok: true, stage: "already_planned", contentId: existing.id, adapter: state.adapter };
-  }
-  let research = { ok: true, items: [] };
-  if (state.adapter === "youtube_api") research = await youtubeResearch(process.env.ZOZ_YOUTUBE_RESEARCH_QUERY || "أدوات كهربائية صيانة كهرباء نصائح", 8);
-  if (!research.ok) return research;
-  const titles = research.items.map(x => `- ${x.title}`).join("\n");
-  const generated = await generateText(`ابحث بناءً على عناوين YouTube التالية، ثم اقترح فكرة فيديو/Short أصلية للقناة. أعطِ عنوانًا، زاوية، hook، نصًا قصيرًا، CTA، ووصفًا.\n${titles}`);
-  if (!generated.ok) { const fallback = { id: id("content"), goalKey: "youtube_growth", status: "planned", title: research.items[0]?.title || "فكرة محتوى كهرباء", research, createdAt: now(), note: "AI generation adapter is not configured yet", adapter: state.adapter }; await memoryStore.remember("content", fallback); return { ok: true, stage: "research_saved", contentId: fallback.id, generation: generated, adapter: state.adapter }; }
-  const item = { id: id("content"), goalKey: "youtube_growth", status: "draft", title: "ZOZ AI YouTube draft", body: generated.text, research, createdAt: now(), adapter: state.adapter };
-  await memoryStore.remember("content", item); return { ok: true, stage: "draft_created", contentId: item.id, adapter: state.adapter };
-}
+async function uploadPostProfileState() { if (!uploadPostConfigured()) return { configured: false, status: "needs_setup" }; const r = await fetchJson("https://api.upload-post.com/api/uploadposts/me", { headers: { Authorization: `Apikey ${process.env.UPLOAD_POST_API_KEY}` } }); return r.ok ? { configured: true, status: "verified", email: r.body?.email || null, plan: r.body?.plan || null } : { configured: true, status: "error", httpStatus: r.status }; }
+async function uploadPostPublishYouTube({ videoUrl, title, description, user }) { if (!uploadPostConfigured()) return { ok: false, configured: false, reason: "UPLOAD_POST_API_KEY_missing" }; if (!videoUrl) return { ok: false, configured: true, reason: "video_url_missing" }; const form = new FormData(); form.append("video", String(videoUrl)); form.append("title", String(title || "ZOZ AI")); form.append("description", String(description || "")); form.append("user", String(user || process.env.UPLOAD_POST_USER || "ZozAI")); form.append("platform[]", "youtube"); form.append("async_upload", "true"); const r = await fetch("https://api.upload-post.com/api/upload", { method: "POST", headers: { Authorization: `Apikey ${process.env.UPLOAD_POST_API_KEY}` }, body: form }); const text = await r.text(); let body = null; try { body = text ? JSON.parse(text) : null; } catch { body = { text: text.slice(0, 500) }; } return r.ok ? { ok: true, requestId: body?.request_id || null, response: body } : { ok: false, configured: true, status: r.status, reason: "upload_post_publish_failed", response: body }; }
+async function youtubeResearch(query, maxResults = 5) { if (!process.env.YOUTUBE_ACCESS_TOKEN) return { ok: false, configured: false, reason: "YOUTUBE_ACCESS_TOKEN_missing" }; const params = new URLSearchParams({ part: "snippet", q: String(query), type: "video", maxResults: String(Math.min(25, maxResults)), order: "relevance" }); const r = await fetchJson(`https://www.googleapis.com/youtube/v3/search?${params}`, { headers: { Authorization: `Bearer ${process.env.YOUTUBE_ACCESS_TOKEN}` } }); if (!r.ok) return { ok: false, configured: true, status: r.status, reason: "youtube_search_failed" }; return { ok: true, items: (r.body.items || []).map(x => ({ id: x.id?.videoId, title: x.snippet?.title, description: x.snippet?.description, channel: x.snippet?.channelTitle, publishedAt: x.snippet?.publishedAt })) }; }
+async function generateText(prompt) { const endpoint = process.env.ZOZ_AI_API_URL || process.env.OPENAI_COMPATIBLE_API_URL; const key = process.env.ZOZ_AI_API_KEY || process.env.OPENAI_API_KEY; if (!endpoint || !key) return { ok: false, configured: false, reason: "ZOZ_AI_API_URL_and_ZOZ_AI_API_KEY_missing" }; const r = await fetchJson(endpoint, { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: process.env.ZOZ_AI_MODEL || "gpt-4.1-mini", messages: [{ role: "system", content: "You are ZOZ AI's autonomous content operator. Produce useful, original, factual business content. Never invent product specifications." }, { role: "user", content: prompt }], temperature: 0.7 }) }); if (!r.ok) return { ok: false, configured: true, status: r.status, reason: "ai_generation_failed" }; const text = r.body?.choices?.[0]?.message?.content || r.body?.output_text || r.body?.text || ""; return text ? { ok: true, text } : { ok: false, configured: true, reason: "ai_generation_empty" }; }
+async function youtubeChannelState() { if (process.env.YOUTUBE_ACCESS_TOKEN) { const r = await fetchJson("https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&mine=true", { headers: { Authorization: `Bearer ${process.env.YOUTUBE_ACCESS_TOKEN}` } }); return r.ok ? { configured: true, status: "verified", channel: r.body.items?.[0] || null, adapter: "youtube_api" } : { configured: true, status: "error", httpStatus: r.status, adapter: "youtube_api" }; } if (uploadPostConfigured()) return { ...(await uploadPostProfileState()), adapter: "upload_post" }; return { configured: false, status: "needs_setup" }; }
+async function runYouTubeAgent(memoryStore) { const state = await youtubeChannelState(); await memoryStore.setChannel("youtube", { ...state, lastCheckedAt: now() }); if (!state.configured || state.status !== "verified") return { ok: false, stage: "connection", ...state }; const memory = await memoryStore.load(); const existing = memory.content.find(x => x.goalKey === "youtube_growth" && ["planned", "draft", "ready"].includes(x.status)); if (existing) { if (state.adapter === "upload_post" && existing.videoUrl && existing.status !== "published") { const publish = await uploadPostPublishYouTube({ videoUrl: existing.videoUrl, title: existing.title, description: existing.description || existing.body, user: process.env.UPLOAD_POST_USER || "ZozAI" }); if (publish.ok) { existing.status = "published"; existing.publishedAt = now(); existing.publishRequestId = publish.requestId; await memoryStore.remember("content", existing); return { ok: true, stage: "published", contentId: existing.id, publishRequestId: publish.requestId, adapter: "upload_post" }; } return { ok: false, stage: "publish", contentId: existing.id, publish }; } return { ok: true, stage: "already_planned", contentId: existing.id, adapter: state.adapter }; } let research = { ok: true, items: [] }; if (state.adapter === "youtube_api") research = await youtubeResearch(process.env.ZOZ_YOUTUBE_RESEARCH_QUERY || "أدوات كهربائية صيانة كهرباء نصائح", 8); if (!research.ok) return research; const titles = research.items.map(x => `- ${x.title}`).join("\n"); const generated = await generateText(`ابحث بناءً على عناوين YouTube التالية، ثم اقترح فكرة فيديو/Short أصلية للقناة. أعطِ عنوانًا، زاوية، hook، نصًا قصيرًا، CTA، ووصفًا.\n${titles}`); if (!generated.ok) { const fallback = { id: id("content"), goalKey: "youtube_growth", status: "planned", title: research.items[0]?.title || "فكرة محتوى كهرباء", research, createdAt: now(), note: "AI generation adapter is not configured yet", adapter: state.adapter }; await memoryStore.remember("content", fallback); return { ok: true, stage: "research_saved", contentId: fallback.id, generation: generated, adapter: state.adapter }; } const item = { id: id("content"), goalKey: "youtube_growth", status: "draft", title: "ZOZ AI YouTube draft", body: generated.text, research, createdAt: now(), adapter: state.adapter }; await memoryStore.remember("content", item); return { ok: true, stage: "draft_created", contentId: item.id, adapter: state.adapter }; }
 
 async function runLeadAgent(memoryStore) {
   const memory = await memoryStore.load();
@@ -97,19 +32,24 @@ async function runLeadAgent(memoryStore) {
     const result = await searchLeads({ query, limit: 10 });
     if (!result.ok) return { ok: false, stage: "research", reason: result.reason || "lead_search_failed", source: result.source || null, adapter: result.adapter || null, endpoint: result.endpoint || null, failures: Array.isArray(result.failures) ? result.failures.slice(0, 5) : [] };
     const leads = Array.isArray(result.results) ? result.results : [];
-    for (const lead of leads) await memoryStore.remember("opportunities", { goalKey: "lead_generation", status: "new", source: lead.source || result.source || "search", title: lead.title || lead.name || "Lead", contact: lead.phone || lead.email || lead.website || null, evidence: lead, discoveredAt: now() });
-    return { ok: true, stage: "leads_saved", count: leads.length, source: result.source, adapter: result.adapter || null, endpoint: result.endpoint || null, fallbackTried: result.fallbackTried || 0 };
-  } catch (error) {
-    return { ok: false, stage: "research_exception", reason: error?.name === "AbortError" ? "lead_search_timeout" : "lead_search_exception", error: String(error?.message || error).slice(0, 300), query, retryable: true };
-  }
+    const history = Array.isArray(memory.contactHistory) ? memory.contactHistory : [];
+    let saved = 0, suppressed = 0, duplicates = 0;
+    for (const lead of leads) {
+      const candidate = { phone: lead.phone, email: lead.email, website: lead.website, name: lead.title || lead.name || "Lead", address: lead.address };
+      const decision = shouldSuppress(candidate, history);
+      if (decision.suppressed) {
+        suppressed++;
+        await memoryStore.rememberContactEvent(createContactEvent(candidate, { status: "duplicate_suppressed", suppress: true, source: lead.source || result.source || "search", channel: "lead_search", reason: decision.reason, metadata: { matchedContactId: decision.record?.id || null } }));
+        continue;
+      }
+      const existingOpportunity = memory.opportunities.find(x => shouldSuppress({ phone: x.evidence?.phone || x.contact, email: x.evidence?.email, website: x.evidence?.website, name: x.title, address: x.evidence?.address }, [candidate]).matched);
+      if (existingOpportunity) { duplicates++; await memoryStore.rememberContactEvent(createContactEvent(candidate, { status: "duplicate_opportunity", suppress: true, source: lead.source || result.source || "search", channel: "lead_search", reason: "existing_opportunity" })); continue; }
+      await memoryStore.remember("opportunities", { goalKey: "lead_generation", status: "new", source: lead.source || result.source || "search", title: lead.title || lead.name || "Lead", contact: lead.phone || lead.email || lead.website || null, evidence: lead, discoveredAt: now() });
+      await memoryStore.rememberContactEvent(createContactEvent(candidate, { status: "discovered", suppress: false, source: lead.source || result.source || "search", channel: "lead_search" }));
+      saved++;
+    }
+    return { ok: true, stage: "leads_saved", count: saved, suppressed, duplicates, rawCount: leads.length, source: result.source, adapter: result.adapter || null, endpoint: result.endpoint || null, fallbackTried: result.fallbackTried || 0 };
+  } catch (error) { return { ok: false, stage: "research_exception", reason: error?.name === "AbortError" ? "lead_search_timeout" : "lead_search_exception", error: String(error?.message || error).slice(0, 300), query, retryable: true }; }
 }
-
-async function executeAutonomousAgents(memoryStore) {
-  const results = [];
-  results.push({ agent: "youtube", result: await runYouTubeAgent(memoryStore) });
-  results.push({ agent: "lead_generation", result: await runLeadAgent(memoryStore) });
-  await memoryStore.recordRun({ id: id("agent_run"), mode: "autonomous_agents", results, completedAt: now() });
-  return results;
-}
-
+async function executeAutonomousAgents(memoryStore) { const results = []; results.push({ agent: "youtube", result: await runYouTubeAgent(memoryStore) }); results.push({ agent: "lead_generation", result: await runLeadAgent(memoryStore) }); await memoryStore.recordRun({ id: id("agent_run"), mode: "autonomous_agents", results, completedAt: now() }); return results; }
 module.exports = { runYouTubeAgent, runLeadAgent, executeAutonomousAgents, youtubeResearch, youtubeChannelState, uploadPostProfileState, uploadPostPublishYouTube };
