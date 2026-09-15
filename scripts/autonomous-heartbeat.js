@@ -9,11 +9,14 @@ async function heartbeat(trigger = "scheduled") {
   running = true;
   try {
     const result = await runAutonomousRuntime(trigger);
+    const youtube = result.agents?.find((item) => item.agent === "youtube")?.result || null;
     const summary = {
       autonomous: result.autonomous,
       durableMemory: result.durableMemory,
       blockers: result.blockers?.map((item) => item.id) || [],
       nextAction: result.reconciliation?.nextAction || null,
+      media: result.media ? { stage: result.media.stage || null, ok: result.media.ok, contentId: result.media.contentId || null, projectId: result.media.projectId || null, videoUrl: result.media.videoUrl || null, publicationStage: result.media.publication?.stage || null, videoId: result.media.publication?.videoId || null, requestId: result.media.publication?.requestId || null, url: result.media.publication?.url || null } : null,
+      youtube: youtube ? { stage: youtube.stage || null, ok: youtube.ok, contentId: youtube.contentId || null, adapter: youtube.adapter || null, publishRequestId: youtube.publishRequestId || null } : null,
       at: new Date().toISOString()
     };
     console.log("[ZOZ autonomous heartbeat]", JSON.stringify(summary));
