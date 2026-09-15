@@ -16,6 +16,10 @@ function rendererConfigured() {
   return Boolean(process.env.J2V_API_KEY || process.env.JSON2VIDEO_API_KEY);
 }
 
+function uploadPostConfigured() {
+  return Boolean(process.env.UPLOAD_POST_API_KEY);
+}
+
 function extractNarration(content) {
   const text = String(content.body || "").replace(/```[\s\S]*?```/g, "").trim();
   return text.slice(0, 4500) || String(content.title || "ZOZ AI");
@@ -62,6 +66,39 @@ async function pollRender(projectId) {
   return { ok: true, stage: "render_pending", status: movie.status || "processing", movie };
 }
 
+async function publishWithUploadPost(content, videoUrl) {
+  if (!uploadPostConfigured()) return { ok: false, stage: "needs_publisher", reason: "UPLOAD_POST_API_KEY_missing" };
+  const profile = process.env.UPLOAD_POST_PROFILE || "ZozAI";
+  const publicPublish = process.env.ZOZ_AUTO_PUBLISH_YOUTUBE === "true";
+  const form = new FormData();
+  form.append("video", videoUrl);
+  form.append("user", profile);
+  form.append("platform[]", "youtube");
+  form.append("title", String(content.title || "ZOZ AI").slice(0, 100));
+  form.append("description", String(content.body || content.title || "ZOZ AI").slice(0, 5000));
+  form.append("youtube_title", String(content.title || "ZOZ AI").slice(0, 100));
+  form.append("privacyStatus", publicPublish ? "public" : "private");
+  form.append("async_upload", "true");
+  form.append("external_id", String(content.id || `zoz-content-${Date.now()}`));
+  const response = await fetchJson("https://api.upload-post.com/api/upload", {
+    method: "POST",
+    headers: { Authorization: `Apikey ${process.env.UPLOAD_POST_API_KEY}` },
+    body: form
+  });
+  if (!response.ok) return { ok: false, stage: "publish_failed", status: response.status, response: response.body };
+  const youtube = response.body?.results?.youtube || {};
+  return {
+    ok: youtube.success !== false,
+    stage: youtube.success === false ? "publish_failed" : "publish_submitted",
+    requestId: response.body?.request_id || response.body?.requestId || null,
+    jobId: response.body?.job_id || response.body?.jobId || null,
+    videoId: youtube.post_id || youtube.video_id || null,
+    url: youtube.url || null,
+    privacyStatus: publicPublish ? "public" : "private",
+    response: response.body
+  };
+}
+
 async function runMediaProductionAgent(memoryStore) {
   const memory = await memoryStore.load();
   const active = memory.content.filter(x => x.goalKey === "youtube_growth" && !["published", "failed"].includes(x.status));
@@ -69,13 +106,32 @@ async function runMediaProductionAgent(memoryStore) {
   if (pendingRender) {
     const polled = await pollRender(pendingRender.renderProjectId);
     if (polled.stage === "render_ready") {
-      await memoryStore.remember("content", { ...pendingRender, status: "ready", videoUrl: polled.videoUrl, renderStatus: "done", renderedAt: now() });
-      return { ok: true, stage: "render_ready", contentId: pendingRender.id, videoUrl: polled.videoUrl };
+      let publication = null;
+      if (process.env.ZOZ_AUTO_PUBLISH_YOUTUBE === "true") {
+        publication = await publishWithUploadPost(pendingRender, polled.videoUrl);
+      }
+      const published = publication?.ok === true && ["publish_submitted", "published"].includes(publication.stage);
+      await memoryStore.remember("content", {
+        ...pendingRender,
+        status: published ? "published" : "ready",
+        videoUrl: polled.videoUrl,
+        renderStatus: "done",
+        renderedAt: now(),
+        publication: publication || { stage: "publish_not_requested" }
+      });
+      return { ok: publication ? publication.ok : true, stage: published ? "published" : "render_ready", contentId: pendingRender.id, videoUrl: polled.videoUrl, publication };
     }
     if (polled.stage === "render_failed") {
       await memoryStore.remember("content", { ...pendingRender, status: "failed", renderStatus: polled.status, renderError: polled.movie?.message || null, failedAt: now() });
     }
     return { ok: polled.ok, stage: polled.stage, contentId: pendingRender.id, status: polled.status || null };
+  }
+  const readyToPublish = active.find(x => x.videoUrl && ["ready", "render_ready"].includes(x.status));
+  if (readyToPublish && process.env.ZOZ_AUTO_PUBLISH_YOUTUBE === "true") {
+    const publication = await publishWithUploadPost(readyToPublish, readyToPublish.videoUrl);
+    const published = publication.ok && ["publish_submitted", "published"].includes(publication.stage);
+    if (published) await memoryStore.remember("content", { ...readyToPublish, status: "published", publication, publishedAt: now() });
+    return { ok: publication.ok, stage: published ? "published" : publication.stage, contentId: readyToPublish.id, publication };
   }
   const draft = active.find(x => ["planned", "draft"].includes(x.status));
   if (!draft) return { ok: true, stage: "no_content_to_render" };
@@ -86,4 +142,4 @@ async function runMediaProductionAgent(memoryStore) {
   return { ok: true, stage: "render_submitted", contentId: draft.id, projectId: submitted.projectId };
 }
 
-module.exports = { runMediaProductionAgent, rendererConfigured, movieFor, submitRender, pollRender };
+module.exports = { runMediaProductionAgent, rendererConfigured, movieFor, submitRender, pollRender, publishWithUploadPost };
