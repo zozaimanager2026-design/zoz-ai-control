@@ -1,4 +1,5 @@
 // ZOZ AI professional episode renderer: schema-safe multi-scene voice/subtitle production.
+// Deployment sync marker: keep Railway aligned with the latest main branch renderer.
 const now = () => new Date().toISOString();
 async function fetchJson(url, options = {}) { const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 15000); try { const response = await fetch(url, { ...options, signal: controller.signal }); const text = await response.text(); let body = null; try { body = text ? JSON.parse(text) : null; } catch { body = { text: text.slice(0, 500) }; } return { ok: response.ok, status: response.status, body }; } finally { clearTimeout(timer); } }
 function rendererConfigured() { return Boolean(process.env.J2V_API_KEY || process.env.JSON2VIDEO_API_KEY); }
