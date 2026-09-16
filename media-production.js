@@ -1,5 +1,5 @@
-// ZOZ AI Professional Video Production Engine v3
-// Self-healing production path: legacy render projects are discarded and rebuilt from the current renderer payload.
+// ZOZ AI Professional Video Production Engine v4
+// Compatibility-first renderer: no legacy style presets; stale render state is reset before polling.
 const now = () => new Date().toISOString();
 const TARGET_VIDEO_SECONDS = 60;
 const MAX_NARRATION_CHARS = 900;
@@ -8,178 +8,57 @@ const MAX_RENDER_RETRIES = 3;
 async function fetchJson(url, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    const text = await response.text();
-    let body = null;
-    try { body = text ? JSON.parse(text) : null; } catch { body = { text: text.slice(0, 1000) }; }
-    return { ok: response.ok, status: response.status, body };
-  } finally { clearTimeout(timer); }
+  try { const response = await fetch(url, { ...options, signal: controller.signal }); const text = await response.text(); let body = null; try { body = text ? JSON.parse(text) : null; } catch { body = { text: text.slice(0, 1000) }; } return { ok: response.ok, status: response.status, body }; }
+  finally { clearTimeout(timer); }
 }
 function rendererConfigured() { return Boolean(process.env.J2V_API_KEY || process.env.JSON2VIDEO_API_KEY); }
 function uploadPostConfigured() { return Boolean(process.env.UPLOAD_POST_API_KEY); }
 function extractNarration(content) { const text = String(content.body || "").replace(/```[\s\S]*?```/g, "").trim(); return text.slice(0, 12000) || String(content.title || "ZOZ AI"); }
-function fitInitialDuration(text) {
-  const clean = String(text || "").replace(/\r/g, "").trim();
-  if (clean.length <= MAX_NARRATION_CHARS) return clean;
-  const sentences = clean.split(/(?<=[.!؟])\s+/).filter(Boolean);
-  let out = "";
-  for (const sentence of sentences) { const next = `${out} ${sentence}`.trim(); if (next.length > MAX_NARRATION_CHARS) break; out = next; }
-  return (out || clean.slice(0, MAX_NARRATION_CHARS)).trim();
-}
-function splitNarration(text) {
-  const clean = fitInitialDuration(text);
-  const paragraphs = clean.split(/\n{2,}/).map(x => x.replace(/^\s*(?:#+|[-•])\s*/, "").trim()).filter(Boolean);
-  if (paragraphs.length >= 3) return paragraphs.slice(0, 6).map(x => x.slice(0, 450));
-  const sentences = clean.split(/(?<=[.!؟])\s+/).filter(Boolean);
-  const chunks = [];
-  let current = "";
-  for (const sentence of sentences) { const next = `${current} ${sentence}`.trim(); if (next.length > 420 && current) { chunks.push(current.trim()); current = sentence; } else current = next; }
-  if (current) chunks.push(current);
-  return (chunks.length ? chunks : [clean]).slice(0, 6).map(x => x.slice(0, 500));
-}
+function fitInitialDuration(text) { const clean = String(text || "").replace(/\r/g, "").trim(); if (clean.length <= MAX_NARRATION_CHARS) return clean; const sentences = clean.split(/(?<=[.!؟])\s+/).filter(Boolean); let out = ""; for (const sentence of sentences) { const next = `${out} ${sentence}`.trim(); if (next.length > MAX_NARRATION_CHARS) break; out = next; } return (out || clean.slice(0, MAX_NARRATION_CHARS)).trim(); }
+function splitNarration(text) { const clean = fitInitialDuration(text); const paragraphs = clean.split(/\n{2,}/).map(x => x.replace(/^\s*(?:#+|[-•])\s*/, "").trim()).filter(Boolean); if (paragraphs.length >= 3) return paragraphs.slice(0, 6).map(x => x.slice(0, 450)); const sentences = clean.split(/(?<=[.!؟])\s+/).filter(Boolean); const chunks = []; let current = ""; for (const sentence of sentences) { const next = `${current} ${sentence}`.trim(); if (next.length > 420 && current) { chunks.push(current.trim()); current = sentence; } else current = next; } if (current) chunks.push(current); return (chunks.length ? chunks : [clean]).slice(0, 6).map(x => x.slice(0, 500)); }
 function movieFor(content) {
-  const narration = extractNarration(content);
-  const title = String(content.title || "ZOZ AI").slice(0, 140);
-  const chunks = splitNarration(narration);
-  const scenes = chunks.map((chunk, index) => ({
-    id: `zoz-scene-${index + 1}`,
-    duration: -1,
-    comment: `ZOZ AI — ${title} — مشهد ${index + 1}`,
-    "background-color": "#0B1020",
-    ...(index ? { transition: { type: "xfade", style: "fade", duration: 0.45 } } : {}),
-    elements: [
-      { type: "text", text: index === 0 ? title : "ZOZ AI", style: process.env.ZOZ_VIDEO_TEXT_STYLE || "001", duration: -1 },
-      { type: "voice", text: chunk, model: process.env.J2V_VOICE_MODEL || "azure", voice: process.env.J2V_VOICE || "ar-SA-HamedNeural", duration: -1 }
-    ]
-  }));
-  return {
-    resolution: "full-hd",
-    quality: "high",
-    cache: false,
-    comment: `ZOZ AI professional Arabic content episode — target ${TARGET_VIDEO_SECONDS}s`,
-    scenes,
-    elements: [{
-      type: "subtitles",
-      language: "ar",
-      settings: {
-        style: "classic-progressive",
-        position: "bottom-center",
-        "max-words-per-line": 4,
-        "font-size": 48,
-        "font-weight": "900",
-        "line-color": "white",
-        "word-color": "#D8FF3E",
-        "outline-color": "black",
-        "outline-width": 4
-      }
-    }]
-  };
+  const narration = extractNarration(content); const title = String(content.title || "ZOZ AI").slice(0, 140); const chunks = splitNarration(narration);
+  const scenes = chunks.map((chunk, index) => ({ id: `zoz-scene-${index + 1}`, duration: -1, comment: `ZOZ AI — ${title} — مشهد ${index + 1}`, "background-color": "#0B1020", ...(index ? { transition: { type: "xfade", style: "fade", duration: 0.45 } } : {}), elements: [
+    { type: "text", text: index === 0 ? title : "ZOZ AI", duration: -1, settings: { "font-size": 48, "font-weight": 900, "color": "#FFFFFF", "align": "center" } },
+    { type: "voice", text: chunk, model: process.env.J2V_VOICE_MODEL || "azure", voice: process.env.J2V_VOICE || "ar-SA-HamedNeural", duration: -1 }
+  ] }));
+  return { resolution: "full-hd", quality: "high", cache: false, comment: `ZOZ AI professional Arabic content episode — renderer v4 — target ${TARGET_VIDEO_SECONDS}s`, scenes, elements: [{ type: "subtitles", language: "ar", settings: { style: "classic-progressive", position: "bottom-center", "max-words-per-line": 4, "font-size": 48, "font-weight": 900, "line-color": "white", "word-color": "#D8FF3E", "outline-color": "black", "outline-width": 4 } }] };
 }
-function legacyRendererError(reason) {
-  const text = String(reason || "").toLowerCase();
-  return text.includes("font-size") && (text.includes("string") || text.includes("42px") || text.includes("expected integer"));
-}
+function legacyRendererError(reason) { const text = String(reason || "").toLowerCase(); return text.includes("font-size") && (text.includes("string") || text.includes("42px") || text.includes("expected integer")); }
 async function submitRender(content) {
-  const apiKey = process.env.J2V_API_KEY || process.env.JSON2VIDEO_API_KEY;
-  if (!apiKey) return { ok: false, stage: "needs_renderer", reason: "J2V_API_KEY_missing" };
-  const payload = movieFor(content);
-  const response = await fetchJson("https://api.json2video.com/v2/movies", {
-    method: "POST",
-    headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  if (!response.ok || !response.body?.project) return {
-    ok: false,
-    stage: "render_submit_failed",
-    status: response.status,
-    reason: response.body?.message || response.body?.error || response.body?.text || "json2video_submit_failed",
-    response: response.body,
-    compatibilityIssue: legacyRendererError(response.body?.message || response.body?.error || response.body?.text)
-  };
+  const apiKey = process.env.J2V_API_KEY || process.env.JSON2VIDEO_API_KEY; if (!apiKey) return { ok: false, stage: "needs_renderer", reason: "J2V_API_KEY_missing" }; const payload = movieFor(content);
+  const response = await fetchJson("https://api.json2video.com/v2/movies", { method: "POST", headers: { "x-api-key": apiKey, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  if (!response.ok || !response.body?.project) return { ok: false, stage: "render_submit_failed", status: response.status, reason: response.body?.message || response.body?.error || response.body?.text || "json2video_submit_failed", response: response.body, compatibilityIssue: legacyRendererError(response.body?.message || response.body?.error || response.body?.text) };
   return { ok: true, stage: "render_submitted", projectId: response.body.project, submittedAt: now() };
 }
 async function pollRender(projectId) {
-  const apiKey = process.env.J2V_API_KEY || process.env.JSON2VIDEO_API_KEY;
-  if (!apiKey) return { ok: false, stage: "needs_renderer", reason: "J2V_API_KEY_missing" };
-  const response = await fetchJson(`https://api.json2video.com/v2/movies?project=${encodeURIComponent(projectId)}`, { headers: { "x-api-key": apiKey } });
-  if (!response.ok) return { ok: false, stage: "render_poll_failed", status: response.status, reason: response.body?.message || response.body?.error || response.body?.text || "json2video_poll_failed" };
-  const movie = response.body?.movie || {};
-  if (movie.status === "done" && movie.url) return { ok: true, stage: "render_ready", videoUrl: movie.url, movie };
-  if (["error", "timeout"].includes(movie.status)) {
-    const reason = movie.message || movie.error || "json2video_render_failed";
-    return { ok: false, stage: "render_failed", status: movie.status, reason, movie, compatibilityIssue: legacyRendererError(reason) };
-  }
-  return { ok: true, stage: "render_pending", status: movie.status || "processing", movie };
+  const apiKey = process.env.J2V_API_KEY || process.env.JSON2VIDEO_API_KEY; if (!apiKey) return { ok: false, stage: "needs_renderer", reason: "J2V_API_KEY_missing" }; const response = await fetchJson(`https://api.json2video.com/v2/movies?project=${encodeURIComponent(projectId)}`, { headers: { "x-api-key": apiKey } });
+  if (!response.ok) return { ok: false, stage: "render_poll_failed", status: response.status, reason: response.body?.message || response.body?.error || response.body?.text || "json2video_poll_failed" }; const movie = response.body?.movie || {};
+  if (movie.status === "done" && movie.url) return { ok: true, stage: "render_ready", videoUrl: movie.url, movie }; if (["error", "timeout"].includes(movie.status)) { const reason = movie.message || movie.error || "json2video_render_failed"; return { ok: false, stage: "render_failed", status: movie.status, reason, movie, compatibilityIssue: legacyRendererError(reason) }; } return { ok: true, stage: "render_pending", status: movie.status || "processing", movie };
 }
 async function publishWithUploadPost(content, videoUrl) {
-  if (!uploadPostConfigured()) return { ok: false, stage: "needs_publisher", reason: "UPLOAD_POST_API_KEY_missing" };
-  const profile = process.env.UPLOAD_POST_PROFILE || "ZozAI";
-  const publicPublish = process.env.ZOZ_AUTO_PUBLISH_YOUTUBE === "true";
-  const form = new FormData();
-  form.append("video", videoUrl);
-  form.append("user", profile);
-  form.append("platform[]", "youtube");
-  form.append("title", String(content.title || "ZOZ AI").slice(0, 100));
-  form.append("description", String(content.body || content.title || "ZOZ AI").slice(0, 5000));
-  form.append("youtube_title", String(content.title || "ZOZ AI").slice(0, 100));
-  form.append("privacyStatus", publicPublish ? "public" : "private");
-  form.append("async_upload", "true");
-  form.append("external_id", String(content.id || `zoz-content-${Date.now()}`));
-  const response = await fetchJson("https://api.upload-post.com/api/upload", { method: "POST", headers: { Authorization: `Apikey ${process.env.UPLOAD_POST_API_KEY}` }, body: form });
-  if (!response.ok) return { ok: false, stage: "publish_failed", status: response.status, reason: response.body?.message || response.body?.error || "upload_post_publish_failed", response: response.body };
-  const youtube = response.body?.results?.youtube || {};
+  if (!uploadPostConfigured()) return { ok: false, stage: "needs_publisher", reason: "UPLOAD_POST_API_KEY_missing" }; const profile = process.env.UPLOAD_POST_PROFILE || "ZozAI"; const publicPublish = process.env.ZOZ_AUTO_PUBLISH_YOUTUBE === "true"; const form = new FormData();
+  form.append("video", videoUrl); form.append("user", profile); form.append("platform[]", "youtube"); form.append("title", String(content.title || "ZOZ AI").slice(0, 100)); form.append("description", String(content.body || content.title || "ZOZ AI").slice(0, 5000)); form.append("youtube_title", String(content.title || "ZOZ AI").slice(0, 100)); form.append("privacyStatus", publicPublish ? "public" : "private"); form.append("async_upload", "true"); form.append("external_id", String(content.id || `zoz-content-${Date.now()}`));
+  const response = await fetchJson("https://api.upload-post.com/api/upload", { method: "POST", headers: { Authorization: `Apikey ${process.env.UPLOAD_POST_API_KEY}` }, body: form }); if (!response.ok) return { ok: false, stage: "publish_failed", status: response.status, reason: response.body?.message || response.body?.error || "upload_post_publish_failed", response: response.body }; const youtube = response.body?.results?.youtube || {};
   return { ok: youtube.success !== false, stage: youtube.success === false ? "publish_failed" : "publish_submitted", requestId: response.body?.request_id || response.body?.requestId || null, jobId: response.body?.job_id || response.body?.jobId || null, videoId: youtube.post_id || youtube.video_id || null, url: youtube.url || null, privacyStatus: publicPublish ? "public" : "private", response: response.body };
 }
 async function runMediaProductionAgent(memoryStore) {
   const memory = await memoryStore.load();
   const active = memory.content.filter(x => x.goalKey === "youtube_growth" && x.status !== "published");
-  let pending = active.find(x => x.renderProjectId && !x.videoUrl && x.status !== "failed");
-
-  // Never poll a project created by the legacy renderer. Discard it and immediately rebuild
-  // from the current v3 payload so stale 42px/string settings can never block production again.
-  if (pending && pending.rendererVersion !== 3) {
-    await memoryStore.remember("content", {
-      ...pending,
-      rendererVersion: 3,
-      status: "planned",
-      renderProjectId: null,
-      renderStatus: "legacy_project_discarded",
-      renderRetryCount: 0,
-      renderError: null,
-      retryAt: now()
-    });
-    pending = null;
-  }
-
+  const legacy = active.find(x => legacyRendererError(x.renderError) || (x.renderProjectId && x.rendererVersion !== 4));
+  if (legacy) { await memoryStore.remember("content", { ...legacy, status: "planned", rendererVersion: 4, renderProjectId: null, renderStatus: "legacy_state_reset", renderRetryCount: 0, renderError: null, retryAt: now(), retryExhausted: false, videoUrl: null }); }
+  const refreshed = await memoryStore.load(); const items = refreshed.content.filter(x => x.goalKey === "youtube_growth" && x.status !== "published");
+  const pending = items.find(x => x.renderProjectId && !x.videoUrl && x.status !== "failed");
   if (pending) {
     const polled = await pollRender(pending.renderProjectId);
-    if (polled.stage === "render_ready") {
-      await memoryStore.remember("content", { ...pending, rendererVersion: 3, status: "ready", videoUrl: polled.videoUrl, renderStatus: "done", renderedAt: now(), previewApproved: false });
-      return { ok: true, stage: "render_ready", contentId: pending.id, videoUrl: polled.videoUrl };
-    }
-    if (polled.stage === "render_failed") {
-      const attempts = Number(pending.renderRetryCount || 0);
-      if (polled.compatibilityIssue && attempts < MAX_RENDER_RETRIES) {
-        const rebuilt = await submitRender(pending);
-        if (rebuilt.ok) {
-          await memoryStore.remember("content", { ...pending, rendererVersion: 3, status: "rendering", renderProjectId: rebuilt.projectId, renderSubmittedAt: rebuilt.submittedAt, renderStatus: "submitted_recovered", renderRetryCount: attempts + 1, renderError: null, targetDurationSeconds: TARGET_VIDEO_SECONDS });
-          return { ok: true, stage: "render_recovered", contentId: pending.id, projectId: rebuilt.projectId, recoveredFrom: "legacy_renderer_payload", targetDurationSeconds: TARGET_VIDEO_SECONDS };
-        }
-        await memoryStore.remember("content", { ...pending, rendererVersion: 3, status: "planned", renderProjectId: null, renderStatus: "rebuild_pending", renderRetryCount: attempts + 1, renderError: rebuilt.reason || polled.reason || null, retryAt: now() });
-        return { ok: false, stage: "render_rebuild_pending", contentId: pending.id, reason: rebuilt.reason || polled.reason || null, compatibilityIssue: true };
-      }
-      await memoryStore.remember("content", { ...pending, rendererVersion: 3, status: "failed", renderProjectId: null, renderStatus: "failed", renderError: polled.reason || null, retryAt: now(), retryExhausted: attempts >= MAX_RENDER_RETRIES });
-      return { ok: false, stage: "render_failed", contentId: pending.id, reason: polled.reason || null, retryExhausted: attempts >= MAX_RENDER_RETRIES };
-    }
+    if (polled.stage === "render_ready") { await memoryStore.remember("content", { ...pending, status: "ready", videoUrl: polled.videoUrl, renderStatus: "done", renderedAt: now(), previewApproved: false, rendererVersion: 4 }); return { ok: true, stage: "render_ready", contentId: pending.id, videoUrl: polled.videoUrl }; }
+    if (polled.stage === "render_failed") { const attempts = Number(pending.renderRetryCount || 0); if (polled.compatibilityIssue && attempts < MAX_RENDER_RETRIES) { const rebuilt = await submitRender(pending); if (rebuilt.ok) { await memoryStore.remember("content", { ...pending, status: "rendering", rendererVersion: 4, renderProjectId: rebuilt.projectId, renderSubmittedAt: rebuilt.submittedAt, renderStatus: "submitted_recovered", renderRetryCount: attempts + 1, renderError: null, targetDurationSeconds: TARGET_VIDEO_SECONDS }); return { ok: true, stage: "render_recovered", contentId: pending.id, projectId: rebuilt.projectId, targetDurationSeconds: TARGET_VIDEO_SECONDS }; } await memoryStore.remember("content", { ...pending, status: "planned", rendererVersion: 4, renderProjectId: null, renderStatus: "rebuild_pending", renderRetryCount: attempts + 1, renderError: rebuilt.reason || polled.reason || null, retryAt: now() }); return { ok: false, stage: "render_rebuild_pending", contentId: pending.id, reason: rebuilt.reason || polled.reason || null, compatibilityIssue: true }; } await memoryStore.remember("content", { ...pending, status: "failed", renderProjectId: null, renderStatus: "failed", renderError: polled.reason || null, retryAt: now(), retryExhausted: attempts >= MAX_RENDER_RETRIES }); return { ok: false, stage: "render_failed", contentId: pending.id, reason: polled.reason || null, retryExhausted: attempts >= MAX_RENDER_RETRIES }; }
     return { ok: polled.ok, stage: polled.stage, contentId: pending.id, status: polled.status || null };
   }
-  const draft = active.find(x => ["planned", "draft", "failed"].includes(x.status) && !x.renderProjectId && Number(x.renderRetryCount || 0) < MAX_RENDER_RETRIES);
-  if (!draft) return { ok: true, stage: "no_content_to_render" };
-  if (!rendererConfigured()) return { ok: false, stage: "needs_renderer", reason: "J2V_API_KEY_missing", contentId: draft.id };
-  const submitted = await submitRender(draft);
-  if (!submitted.ok) return { ...submitted, contentId: draft.id };
-  await memoryStore.remember("content", { ...draft, rendererVersion: 3, status: "rendering", renderProjectId: submitted.projectId, renderSubmittedAt: submitted.submittedAt, renderStatus: "submitted", renderRetryCount: Number(draft.renderRetryCount || 0) + 1, targetDurationSeconds: TARGET_VIDEO_SECONDS });
+  const draft = items.find(x => ["planned", "draft", "failed"].includes(x.status) && !x.renderProjectId && Number(x.renderRetryCount || 0) < MAX_RENDER_RETRIES);
+  if (!draft) return { ok: true, stage: "no_content_to_render" }; if (!rendererConfigured()) return { ok: false, stage: "needs_renderer", reason: "J2V_API_KEY_missing", contentId: draft.id };
+  const submitted = await submitRender({ ...draft, rendererVersion: 4 }); if (!submitted.ok) return { ...submitted, contentId: draft.id };
+  await memoryStore.remember("content", { ...draft, rendererVersion: 4, status: "rendering", renderProjectId: submitted.projectId, renderSubmittedAt: submitted.submittedAt, renderStatus: "submitted", renderRetryCount: Number(draft.renderRetryCount || 0) + 1, targetDurationSeconds: TARGET_VIDEO_SECONDS, renderError: null });
   return { ok: true, stage: "render_submitted", contentId: draft.id, projectId: submitted.projectId, targetDurationSeconds: TARGET_VIDEO_SECONDS };
 }
 module.exports = { runMediaProductionAgent, rendererConfigured, movieFor, submitRender, pollRender, publishWithUploadPost, TARGET_VIDEO_SECONDS };
