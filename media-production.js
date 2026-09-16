@@ -25,36 +25,42 @@ function extractNarration(content) {
   return text.slice(0, 4500) || String(content.title || "ZOZ AI");
 }
 
-function movieFor(content) {
+function movieFor(content, compatibilityMode = false) {
   const narration = extractNarration(content);
   const title = String(content.title || "ZOZ AI").slice(0, 140);
+  const titleElement = compatibilityMode
+    ? { type: "text", text: title, style: "001" }
+    : { type: "text", text: title, style: "001", settings: { "font-size": 56, "font-weight": 700, "vertical-position": "top", "horizontal-position": "center" } };
+  const subtitleElement = compatibilityMode
+    ? { type: "subtitles", language: "ar" }
+    : { type: "subtitles", language: "ar", settings: { "font-size": 42, "font-weight": 700, "vertical-position": "bottom", "horizontal-position": "center" } };
   return {
     resolution: "full-hd",
     quality: "high",
     cache: true,
     scenes: [{
-      comment: "ZOZ AI autonomous short",
+      comment: compatibilityMode ? "ZOZ AI autonomous compatibility render" : "ZOZ AI autonomous short",
       elements: [
-        { type: "text", text: title, style: "001", settings: { "font-size": 56, "font-weight": 700, "vertical-position": "top", "horizontal-position": "center" } },
+        titleElement,
         { type: "voice", text: narration, model: process.env.J2V_VOICE_MODEL || "azure", voice: process.env.J2V_VOICE || "ar-SA-HamedNeural" },
-        { type: "subtitles", language: "ar", settings: { "font-size": 42, "font-weight": 700, "vertical-position": "bottom", "horizontal-position": "center" } }
+        subtitleElement
       ]
     }]
   };
 }
 
-async function submitRender(content) {
+async function submitRender(content, compatibilityMode = false) {
   const apiKey = process.env.J2V_API_KEY || process.env.JSON2VIDEO_API_KEY;
   if (!apiKey) return { ok: false, stage: "needs_renderer", reason: "J2V_API_KEY_missing" };
   const response = await fetchJson("https://api.json2video.com/v2/movies", {
     method: "POST",
     headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify(movieFor(content))
+    body: JSON.stringify(movieFor(content, compatibilityMode))
   });
   if (!response.ok || !response.body?.project) {
-    return { ok: false, stage: "render_submit_failed", status: response.status, reason: response.body?.message || response.body?.error || response.body?.text || "json2video_submit_failed", response: response.body };
+    return { ok: false, stage: "render_submit_failed", status: response.status, reason: response.body?.message || response.body?.error || response.body?.text || "json2video_submit_failed", response: response.body, compatibilityMode };
   }
-  return { ok: true, stage: "render_submitted", projectId: response.body.project, submittedAt: now() };
+  return { ok: true, stage: "render_submitted", projectId: response.body.project, submittedAt: now(), compatibilityMode };
 }
 
 async function pollRender(projectId) {
@@ -102,8 +108,18 @@ async function runMediaProductionAgent(memoryStore) {
       return { ok: publication ? publication.ok : true, stage: published ? "published" : "render_ready", contentId: pendingRender.id, videoUrl: polled.videoUrl, publication };
     }
     if (polled.stage === "render_failed") {
-      await memoryStore.remember("content", { ...pendingRender, status: "planned", renderProjectId: null, renderStatus: "retry_required", renderError: polled.reason || polled.movie?.message || null, retryAt: now() });
-      return { ok: false, stage: "render_failed_retry_scheduled", contentId: pendingRender.id, status: polled.status || null, reason: polled.reason || null };
+      const retryCount = Number(pendingRender.renderRetryCount || 0);
+      if (retryCount < 2 && !pendingRender.compatibilityMode) {
+        const fallback = await submitRender(pendingRender, true);
+        if (fallback.ok) {
+          await memoryStore.remember("content", { ...pendingRender, status: "rendering", renderProjectId: fallback.projectId, renderStatus: "compatibility_retry_submitted", renderRetryCount: retryCount + 1, compatibilityMode: true, renderError: polled.reason || polled.movie?.message || null, retryAt: now() });
+          await memoryStore.remember("learnings", { id: `media_${pendingRender.id}_renderer_compat`, category: "media_production", type: "renderer_compatibility", contentId: pendingRender.id, lesson: "Use the compatibility JSON2Video payload without explicit subtitle/font settings after renderer schema rejection.", sourceError: polled.reason || null });
+          return { ok: true, stage: "render_compatibility_retry_submitted", contentId: pendingRender.id, projectId: fallback.projectId, reason: polled.reason || null };
+        }
+      }
+      await memoryStore.remember("content", { ...pendingRender, status: "failed", renderProjectId: null, renderStatus: "failed", renderError: polled.reason || polled.movie?.message || null, renderRetryCount: retryCount, retryAt: now() });
+      await memoryStore.remember("learnings", { id: `media_${pendingRender.id}_renderer_failure`, category: "media_production", type: "renderer_failure", contentId: pendingRender.id, lesson: "JSON2Video render failed; autonomous runtime should surface a blocker instead of treating the system as fully autonomous.", sourceError: polled.reason || null });
+      return { ok: false, stage: "render_failed", contentId: pendingRender.id, status: polled.status || null, reason: polled.reason || null, retryExhausted: true };
     }
     return { ok: polled.ok, stage: polled.stage, contentId: pendingRender.id, status: polled.status || null, reason: polled.reason || null };
   }
@@ -114,12 +130,12 @@ async function runMediaProductionAgent(memoryStore) {
     if (published) await memoryStore.remember("content", { ...readyToPublish, status: "published", publication, publishedAt: now() });
     return { ok: publication.ok, stage: published ? "published" : publication.stage, contentId: readyToPublish.id, publication };
   }
-  const draft = active.find(x => ["planned", "draft", "failed"].includes(x.status) && !x.renderProjectId);
+  const draft = active.find(x => ["planned", "draft", "failed"].includes(x.status) && !x.renderProjectId && Number(x.renderRetryCount || 0) < 3);
   if (!draft) return { ok: true, stage: "no_content_to_render" };
   if (!rendererConfigured()) return { ok: false, stage: "needs_renderer", reason: "J2V_API_KEY_missing", contentId: draft.id };
-  const submitted = await submitRender(draft);
+  const submitted = await submitRender(draft, Boolean(draft.compatibilityMode));
   if (!submitted.ok) return { ...submitted, contentId: draft.id };
-  await memoryStore.remember("content", { ...draft, status: "rendering", renderProjectId: submitted.projectId, renderSubmittedAt: submitted.submittedAt, renderStatus: "submitted" });
+  await memoryStore.remember("content", { ...draft, status: "rendering", renderProjectId: submitted.projectId, renderSubmittedAt: submitted.submittedAt, renderStatus: "submitted", compatibilityMode: submitted.compatibilityMode === true });
   return { ok: true, stage: "render_submitted", contentId: draft.id, projectId: submitted.projectId };
 }
 
