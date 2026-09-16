@@ -3,8 +3,8 @@
 // Supported providers: creatomate, shotstack. No secrets are stored in source control.
 
 const PROVIDERS = Object.freeze({
-  creatomate: { endpoint: "https://api.creatomate.com/v2/renders", keyEnv: "CREATOMATE_API_KEY" },
-  shotstack: { endpoint: "https://api.shotstack.io/v1/render", keyEnv: "SHOTSTACK_API_KEY" }
+  creatomate: { endpoint: "https://api.creatomate.com/v2/renders", keyEnv: "CREATOMATE_API_KEY", auth: "bearer" },
+  shotstack: { endpoint: "https://api.shotstack.io/v1/render", keyEnv: "SHOTSTACK_API_KEY", auth: "x-api-key" }
 });
 
 function providerConfig(name = process.env.ZOZ_VIDEO_RENDER_PROVIDER || "creatomate") {
@@ -19,11 +19,10 @@ function providerConfig(name = process.env.ZOZ_VIDEO_RENDER_PROVIDER || "creatom
 async function renderWithCloudProvider(payload, options = {}) {
   const config = providerConfig(options.provider);
   const body = options.body || payload;
-  const response = await fetch(config.endpoint, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
+  const headers = { "Content-Type": "application/json" };
+  if (config.auth === "x-api-key") headers["x-api-key"] = config.apiKey;
+  else headers.Authorization = `Bearer ${config.apiKey}`;
+  const response = await fetch(config.endpoint, { method: "POST", headers, body: JSON.stringify(body) });
   const text = await response.text();
   let data;
   try { data = JSON.parse(text); } catch { data = { raw: text }; }
