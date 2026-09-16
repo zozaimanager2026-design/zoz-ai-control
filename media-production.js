@@ -29,18 +29,16 @@ function extractNarration(content) {
 function movieFor(content, compatibilityMode = false) {
   const narration = extractNarration(content);
   const title = String(content.title || "ZOZ AI").slice(0, 140);
-  const titleElement = compatibilityMode
-    ? { type: "text", text: title, style: "001" }
-    : { type: "text", text: title, style: "001", settings: { "font-size": 56, "font-weight": 700, "vertical-position": "top", "horizontal-position": "center" } };
-  const subtitleElement = compatibilityMode
-    ? { type: "subtitles", language: "ar" }
-    : { type: "subtitles", language: "ar", settings: { "font-size": 42, "font-weight": 700, "vertical-position": "bottom", "horizontal-position": "center" } };
+  // JSON2Video is strict about schema types. Keep typography in named styles
+  // and never send CSS-like font-size strings in the movie payload.
+  const titleElement = { type: "text", text: title, style: "001" };
+  const subtitleElement = { type: "subtitles", language: "ar" };
   return {
     resolution: "full-hd",
     quality: "high",
     cache: true,
     scenes: [{
-      comment: compatibilityMode ? "ZOZ AI autonomous compatibility render" : "ZOZ AI autonomous short",
+      comment: compatibilityMode ? "ZOZ AI autonomous compatibility render" : "ZOZ AI autonomous professional episode",
       elements: [
         titleElement,
         { type: "voice", text: narration, model: process.env.J2V_VOICE_MODEL || "azure", voice: process.env.J2V_VOICE || "ar-SA-HamedNeural" },
@@ -114,7 +112,7 @@ async function runMediaProductionAgent(memoryStore) {
         const fallback = await submitRender(pendingRender, true);
         if (fallback.ok) {
           await memoryStore.remember("content", { ...pendingRender, status: "rendering", renderProjectId: fallback.projectId, renderStatus: "compatibility_retry_submitted", renderRetryCount: retryCount + 1, compatibilityMode: true, renderError: polled.reason || polled.movie?.message || null, retryAt: now() });
-          await memoryStore.remember("learnings", { id: `media_${pendingRender.id}_renderer_compat`, category: "media_production", type: "renderer_compatibility", contentId: pendingRender.id, lesson: "Use the compatibility JSON2Video payload without explicit subtitle/font settings after renderer schema rejection.", sourceError: polled.reason || null });
+          await memoryStore.remember("learnings", { id: `media_${pendingRender.id}_renderer_compat`, category: "media_production", type: "renderer_compatibility", contentId: pendingRender.id, lesson: "Use the schema-safe JSON2Video payload without explicit subtitle/font settings after renderer schema rejection.", sourceError: polled.reason || null });
           return { ok: true, stage: "render_compatibility_retry_submitted", contentId: pendingRender.id, projectId: fallback.projectId, reason: polled.reason || null };
         }
       }
@@ -134,9 +132,9 @@ async function runMediaProductionAgent(memoryStore) {
   const draft = active.find(x => ["planned", "draft", "failed"].includes(x.status) && !x.renderProjectId && Number(x.renderRetryCount || 0) < 3);
   if (!draft) return { ok: true, stage: "no_content_to_render" };
   if (!rendererConfigured()) return { ok: false, stage: "needs_renderer", reason: "J2V_API_KEY_missing", contentId: draft.id };
-  const submitted = await submitRender(draft, Boolean(draft.compatibilityMode));
+  const submitted = await submitRender(draft, true);
   if (!submitted.ok) return { ...submitted, contentId: draft.id };
-  await memoryStore.remember("content", { ...draft, status: "rendering", renderProjectId: submitted.projectId, renderSubmittedAt: submitted.submittedAt, renderStatus: "submitted", compatibilityMode: submitted.compatibilityMode === true });
+  await memoryStore.remember("content", { ...draft, status: "rendering", renderProjectId: submitted.projectId, renderSubmittedAt: submitted.submittedAt, renderStatus: "submitted", compatibilityMode: true });
   return { ok: true, stage: "render_submitted", contentId: draft.id, projectId: submitted.projectId };
 }
 
