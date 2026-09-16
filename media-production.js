@@ -1,4 +1,4 @@
-// Phone-side autonomous renderer fallback patch: keep Railway/GitHub deployment synchronized with main.
+// ZOZ AI professional episode renderer: schema-safe multi-scene voice/subtitle production.
 const now = () => new Date().toISOString();
 
 async function fetchJson(url, options = {}) {
@@ -26,25 +26,40 @@ function extractNarration(content) {
   return text.slice(0, 4500) || String(content.title || "ZOZ AI");
 }
 
+function splitNarration(text) {
+  const clean = String(text || "").replace(/\r/g, "").trim();
+  const paragraphs = clean.split(/\n{2,}/).map(x => x.replace(/^\s*(?:#+|[-•])\s*/g, "").trim()).filter(Boolean);
+  if (paragraphs.length >= 3) return paragraphs.slice(0, 6).map(x => x.slice(0, 850));
+  const sentences = clean.split(/(?<=[.!؟])\s+/).filter(Boolean);
+  const chunks = [];
+  let current = "";
+  for (const sentence of sentences) {
+    if ((current + " " + sentence).trim().length > 650 && current) {
+      chunks.push(current.trim());
+      current = sentence;
+    } else current = `${current} ${sentence}`.trim();
+  }
+  if (current) chunks.push(current);
+  return (chunks.length ? chunks : [clean]).slice(0, 6).map(x => x.slice(0, 850));
+}
+
 function movieFor(content, compatibilityMode = false) {
   const narration = extractNarration(content);
   const title = String(content.title || "ZOZ AI").slice(0, 140);
-  // JSON2Video is strict about schema types. Keep typography in named styles
-  // and never send CSS-like font-size strings in the movie payload.
-  const titleElement = { type: "text", text: title, style: "001" };
-  const subtitleElement = { type: "subtitles", language: "ar" };
+  const chunks = splitNarration(narration);
+  const scenes = chunks.map((chunk, index) => ({
+    comment: `ZOZ AI professional episode scene ${index + 1}`,
+    elements: [
+      { type: "text", text: index === 0 ? title : "ZOZ AI", style: "001" },
+      { type: "voice", text: chunk, model: process.env.J2V_VOICE_MODEL || "azure", voice: process.env.J2V_VOICE || "ar-SA-HamedNeural" },
+      { type: "subtitles", language: "ar" }
+    ]
+  }));
   return {
     resolution: "full-hd",
     quality: "high",
     cache: true,
-    scenes: [{
-      comment: compatibilityMode ? "ZOZ AI autonomous compatibility render" : "ZOZ AI autonomous professional episode",
-      elements: [
-        titleElement,
-        { type: "voice", text: narration, model: process.env.J2V_VOICE_MODEL || "azure", voice: process.env.J2V_VOICE || "ar-SA-HamedNeural" },
-        subtitleElement
-      ]
-    }]
+    scenes
   };
 }
 
