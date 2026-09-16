@@ -46,6 +46,7 @@ async function heartbeat(trigger = "scheduled") {
   }
 }
 
+// On startup, repair any legacy video state before the first autonomous cycle.
 setTimeout(() => heartbeat("startup"), 5000);
 setInterval(() => heartbeat("scheduled"), INTERVAL_MS);
 
