@@ -45,8 +45,6 @@ async function runAutonomousRuntime(trigger = "scheduled") {
   const core = createAutonomyCore(memory);
   const heartbeat = await core.heartbeat({ trigger });
 
-  // Generate/plan channel work before media production so a new YouTube draft
-  // can enter rendering during the same autonomous heartbeat.
   let agents;
   try {
     agents = await executeAutonomousAgents(memory);
@@ -66,6 +64,8 @@ async function runAutonomousRuntime(trigger = "scheduled") {
   const leadFailure = agents.find(x => x.agent === "lead_generation" && !x.result?.ok);
   if (leadFailure && !blockers.some(x => x.id === "lead_search_adapter")) blockers.push({ id: "lead_search_adapter", priority: 2, reason: leadFailure.result?.reason || "Lead discovery adapter failed during the autonomous run", diagnostic: { stage: leadFailure.result?.stage || null, source: leadFailure.result?.source || null, adapter: leadFailure.result?.adapter || null, endpoint: leadFailure.result?.endpoint || null, failures: leadFailure.result?.failures || [], retryable: leadFailure.result?.retryable !== false } });
   if (media?.stage === "needs_renderer" && !blockers.some(x => x.id === "media_renderer")) blockers.push({ id: "media_renderer", priority: 1, reason: "A video renderer is required to turn ZOZ AI scripts into publishable MP4 assets", requiredEnv: "J2V_API_KEY", solution: "JSON2Video API" });
+  if (["render_failed", "render_submit_failed", "render_poll_failed", "media_runtime_exception"].includes(media?.stage) && !blockers.some(x => x.id === "media_renderer_failure")) blockers.push({ id: "media_renderer_failure", priority: 1, reason: media.reason || "Video rendering failed during the autonomous run", diagnostic: { stage: media.stage, contentId: media.contentId || null, retryExhausted: media.retryExhausted === true }, nextAction: "diagnose_renderer_and_use_compatibility_fallback" });
+  if (["publish_failed", "needs_publisher"].includes(media?.stage) && !blockers.some(x => x.id === "publisher_failure")) blockers.push({ id: "publisher_failure", priority: 1, reason: media.publication?.reason || media.reason || "Publishing failed during the autonomous run", nextAction: "diagnose_publisher_connection" });
   if (agents.some(x => x.agent === "youtube" && x.result?.stage === "connection") && !blockers.some(x => x.id === "youtube_connection")) blockers.push({ id: "youtube_connection", priority: 1, reason: "YouTube connector is not configured for the server runtime" });
   const run = await memory.recordRun({ id: id("runtime"), mode: "autonomous_runtime", trigger, reconciliation, heartbeat, media, agents, blockers, completedAt: now() });
   return { ok: true, autonomous: memory.durable && blockers.length === 0, durableMemory: memory.durable, memoryStatus, reconciliation, heartbeat, media, agents, blockers, lastRun: run, snapshot };
