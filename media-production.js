@@ -1,3 +1,4 @@
+// Phone-side autonomous renderer fallback patch: keep Railway/GitHub deployment synchronized with main.
 const now = () => new Date().toISOString();
 
 async function fetchJson(url, options = {}) {
