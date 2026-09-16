@@ -1,0 +1,51 @@
+name: ZOZ AI Free Video Production
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 7 * * 1'
+
+permissions:
+  contents: write
+
+jobs:
+  produce:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install free rendering tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg espeak-ng
+
+      - name: Render Episode 1
+        run: node scripts/free-video-renderer.js
+
+      - name: Validate video
+        run: |
+          ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 artifacts/episode-001/zoz-ai-episode-001.mp4
+          test -s artifacts/episode-001/zoz-ai-episode-001.mp4
+
+      - name: Publish directly to ZozAI YouTube
+        if: ${{ secrets.YOUTUBE_CLIENT_ID != '' && secrets.YOUTUBE_CLIENT_SECRET != '' && secrets.YOUTUBE_REFRESH_TOKEN != '' }}
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        run: node scripts/publish-youtube.js artifacts/episode-001/zoz-ai-episode-001.mp4
+
+      - name: Store rendered MP4 as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zoz-ai-episode-001-free
+          path: artifacts/episode-001/zoz-ai-episode-001.mp4
+          retention-days: 90
+
+      - name: Create permanent GitHub release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="zoz-episode-001-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" artifacts/episode-001/zoz-ai-episode-001.mp4 --title "ZOZ AI Episode 1 — Free Render" --notes "Free-first independent render produced by ZOZ AI."
