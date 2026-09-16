@@ -134,11 +134,28 @@ async function publishWithUploadPost(content, videoUrl) {
 async function runMediaProductionAgent(memoryStore) {
   const memory = await memoryStore.load();
   const active = memory.content.filter(x => x.goalKey === "youtube_growth" && x.status !== "published");
-  const pending = active.find(x => x.renderProjectId && !x.videoUrl && x.status !== "failed");
+  let pending = active.find(x => x.renderProjectId && !x.videoUrl && x.status !== "failed");
+
+  // Never poll a project created by the legacy renderer. Discard it and immediately rebuild
+  // from the current v3 payload so stale 42px/string settings can never block production again.
+  if (pending && pending.rendererVersion !== 3) {
+    await memoryStore.remember("content", {
+      ...pending,
+      rendererVersion: 3,
+      status: "planned",
+      renderProjectId: null,
+      renderStatus: "legacy_project_discarded",
+      renderRetryCount: 0,
+      renderError: null,
+      retryAt: now()
+    });
+    pending = null;
+  }
+
   if (pending) {
     const polled = await pollRender(pending.renderProjectId);
     if (polled.stage === "render_ready") {
-      await memoryStore.remember("content", { ...pending, status: "ready", videoUrl: polled.videoUrl, renderStatus: "done", renderedAt: now(), previewApproved: false });
+      await memoryStore.remember("content", { ...pending, rendererVersion: 3, status: "ready", videoUrl: polled.videoUrl, renderStatus: "done", renderedAt: now(), previewApproved: false });
       return { ok: true, stage: "render_ready", contentId: pending.id, videoUrl: polled.videoUrl };
     }
     if (polled.stage === "render_failed") {
@@ -146,13 +163,13 @@ async function runMediaProductionAgent(memoryStore) {
       if (polled.compatibilityIssue && attempts < MAX_RENDER_RETRIES) {
         const rebuilt = await submitRender(pending);
         if (rebuilt.ok) {
-          await memoryStore.remember("content", { ...pending, status: "rendering", renderProjectId: rebuilt.projectId, renderSubmittedAt: rebuilt.submittedAt, renderStatus: "submitted_recovered", renderRetryCount: attempts + 1, renderError: null, targetDurationSeconds: TARGET_VIDEO_SECONDS });
+          await memoryStore.remember("content", { ...pending, rendererVersion: 3, status: "rendering", renderProjectId: rebuilt.projectId, renderSubmittedAt: rebuilt.submittedAt, renderStatus: "submitted_recovered", renderRetryCount: attempts + 1, renderError: null, targetDurationSeconds: TARGET_VIDEO_SECONDS });
           return { ok: true, stage: "render_recovered", contentId: pending.id, projectId: rebuilt.projectId, recoveredFrom: "legacy_renderer_payload", targetDurationSeconds: TARGET_VIDEO_SECONDS };
         }
-        await memoryStore.remember("content", { ...pending, status: "planned", renderProjectId: null, renderStatus: "rebuild_pending", renderRetryCount: attempts + 1, renderError: rebuilt.reason || polled.reason || null, retryAt: now() });
+        await memoryStore.remember("content", { ...pending, rendererVersion: 3, status: "planned", renderProjectId: null, renderStatus: "rebuild_pending", renderRetryCount: attempts + 1, renderError: rebuilt.reason || polled.reason || null, retryAt: now() });
         return { ok: false, stage: "render_rebuild_pending", contentId: pending.id, reason: rebuilt.reason || polled.reason || null, compatibilityIssue: true };
       }
-      await memoryStore.remember("content", { ...pending, status: "failed", renderProjectId: null, renderStatus: "failed", renderError: polled.reason || null, retryAt: now(), retryExhausted: attempts >= MAX_RENDER_RETRIES });
+      await memoryStore.remember("content", { ...pending, rendererVersion: 3, status: "failed", renderProjectId: null, renderStatus: "failed", renderError: polled.reason || null, retryAt: now(), retryExhausted: attempts >= MAX_RENDER_RETRIES });
       return { ok: false, stage: "render_failed", contentId: pending.id, reason: polled.reason || null, retryExhausted: attempts >= MAX_RENDER_RETRIES };
     }
     return { ok: polled.ok, stage: polled.stage, contentId: pending.id, status: polled.status || null };
@@ -162,7 +179,7 @@ async function runMediaProductionAgent(memoryStore) {
   if (!rendererConfigured()) return { ok: false, stage: "needs_renderer", reason: "J2V_API_KEY_missing", contentId: draft.id };
   const submitted = await submitRender(draft);
   if (!submitted.ok) return { ...submitted, contentId: draft.id };
-  await memoryStore.remember("content", { ...draft, status: "rendering", renderProjectId: submitted.projectId, renderSubmittedAt: submitted.submittedAt, renderStatus: "submitted", renderRetryCount: Number(draft.renderRetryCount || 0) + 1, targetDurationSeconds: TARGET_VIDEO_SECONDS });
+  await memoryStore.remember("content", { ...draft, rendererVersion: 3, status: "rendering", renderProjectId: submitted.projectId, renderSubmittedAt: submitted.submittedAt, renderStatus: "submitted", renderRetryCount: Number(draft.renderRetryCount || 0) + 1, targetDurationSeconds: TARGET_VIDEO_SECONDS });
   return { ok: true, stage: "render_submitted", contentId: draft.id, projectId: submitted.projectId, targetDurationSeconds: TARGET_VIDEO_SECONDS };
 }
 module.exports = { runMediaProductionAgent, rendererConfigured, movieFor, submitRender, pollRender, publishWithUploadPost, TARGET_VIDEO_SECONDS };
