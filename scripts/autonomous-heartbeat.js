@@ -1,4 +1,5 @@
 const { runAutonomousRuntime } = require("../autonomous-runtime");
+require("./vercel-token-route");
 require("../server");
 
 const INTERVAL_MS = Math.max(5 * 60 * 1000, Number(process.env.ZOZ_AUTONOMY_INTERVAL_MS || 15 * 60 * 1000));
