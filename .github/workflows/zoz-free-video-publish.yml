@@ -1,6 +1,13 @@
 name: ZOZ AI Free Video Production
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'content/episode-001-free-autonomous.json'
+      - 'scripts/free-video-renderer.js'
+      - 'scripts/publish-youtube.js'
+      - '.github/workflows/zoz-free-video-publish.yml'
   workflow_dispatch:
   schedule:
     - cron: '17 7 * * 1'
@@ -28,13 +35,17 @@ jobs:
           ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 artifacts/episode-001/zoz-ai-episode-001.mp4
           test -s artifacts/episode-001/zoz-ai-episode-001.mp4
 
-      - name: Publish directly to ZozAI YouTube
-        if: ${{ secrets.YOUTUBE_CLIENT_ID != '' && secrets.YOUTUBE_CLIENT_SECRET != '' && secrets.YOUTUBE_REFRESH_TOKEN != '' }}
+      - name: Publish directly to ZozAI YouTube when OAuth is configured
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-        run: node scripts/publish-youtube.js artifacts/episode-001/zoz-ai-episode-001.mp4
+        run: |
+          if [ -n "${YOUTUBE_CLIENT_ID:-}" ] && [ -n "${YOUTUBE_CLIENT_SECRET:-}" ] && [ -n "${YOUTUBE_REFRESH_TOKEN:-}" ]; then
+            node scripts/publish-youtube.js artifacts/episode-001/zoz-ai-episode-001.mp4
+          else
+            echo "YouTube OAuth secrets are not configured; render completed without publishing."
+          fi
 
       - name: Store rendered MP4 as workflow artifact
         uses: actions/upload-artifact@v4
