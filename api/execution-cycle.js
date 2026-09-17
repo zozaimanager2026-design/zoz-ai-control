@@ -1,4 +1,5 @@
 const { createStore, runCycle } = require("../execution-engine");
+const { dispatchExecutableTasks } = require("../execution-renderer-bridge");
 const store = createStore();
 
 function authorized(req) {
@@ -16,7 +17,8 @@ module.exports = async (req,res) => {
     await store.init();
     const state=await store.load();
     const result=runCycle(state);
+    const rendererResults=await dispatchExecutableTasks(state);
     const persisted=await store.save(state);
-    return res.status(200).json({ok:true,service:"ZOZ AI Digital Business Execution",durable:store.durable,persisted,...result});
+    return res.status(200).json({ok:true,service:"ZOZ AI Digital Business Execution",durable:store.durable,persisted,rendererResults,...result});
   } catch(error) { return res.status(500).json({ok:false,error:"execution_cycle_error",message:error.message}); }
 };
