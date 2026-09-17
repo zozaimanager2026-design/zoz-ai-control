@@ -42,7 +42,7 @@ function scoreOpportunity(input={}){
  return {score,skillFit,requirementCompleteness:completeness,budgetFit:budget,competition,risk,skills,serviceId:input.serviceId||null,ready:score>=70&&known.length===skills.length};
 }
 function selectExecutionTools(service,input={}){
- const declared=[...(service?.primaryTools||[])];
+ const declared=[...(input.primaryTools||service?.primaryTools||[])];
  const unavailable=new Set(input.unavailableTools||[]);
  const available=new Set(input.availableTools||[]);
  const hasExplicitAvailability=Array.isArray(input.availableTools);
@@ -63,7 +63,7 @@ function buildPlan(input={}){
  const service=resolveService(input),skills=resolveSkills(input,service),financial=Boolean(input.financial)||isFinanciallySensitive(`${input.title||""} ${input.description||""}`);
  const toolMap={brand_identity:"design_tools",marketing_design:"design_tools",pdf_documents:"document_tools",content_writing:"document_tools",media:"media_tools",automation:"automation_tools",data:"data_tools",websites:"github",software:"github"};
  const declared=service?.primaryTools?.length?service.primaryTools:[...new Set(skills.map(s=>toolMap[s]).filter(Boolean))];
- const execution=selectExecutionTools({...service,id:input.serviceId}, {...input, primaryTools:declared});
+ const execution=selectExecutionTools(service, {...input, primaryTools:declared});
  const stages=buildStages(service);
  const executionBlocked=!financial&&execution.executionMode==="blocked";
  return {id:id("plan"),title:String(input.title||service?.label||"Digital work"),description:String(input.description||""),serviceId:input.serviceId||null,serviceLabel:service?.label||null,skills,tools:execution.selectedTools,declaredTools:declared,toolRouting:execution,alternatives:service?.alternatives||[],deliverables:service?.deliverables||skills.flatMap(s=>SKILLS[s]?.outputs||[]),stages,score:scoreOpportunity({...input,skills,serviceId:input.serviceId}),financial,humanApprovalRequired:financial,autonomous:!financial&&!executionBlocked,executionBlocked,executionBlockReason:executionBlocked?"no_execution_tool_available":null,mobileControl:true,createdAt:now()};
