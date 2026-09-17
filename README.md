@@ -100,3 +100,18 @@ Body structure:
 ## الاختبارات
 
 `npm test` يشمل syntax checks، طبقة الأعمال، WhatsApp CRM، Peach payload/webhook structure، حماية WhatsApp outbound، حماية Cron، وتكاملات المشروع الموجودة.
+
+## ZOZ Native Image Renderer — Hugging Face ZeroGPU
+
+The image pipeline is now free-first and provider-agnostic. When `ZOZ_HF_SPACE_URL` is configured, the ZOZ media renderer routes image generation to the ZOZ-owned Hugging Face Gradio Space under `hf-spaces/zoz-native-image/`. Paid image providers are not the default path.
+
+The current reference model is `Qwen/Qwen-Image-2512` (Apache-2.0). Hugging Face documents ZeroGPU as a shared GPU runtime for Gradio Spaces; the free personal tier currently includes 5 minutes of daily GPU quota, so this is a development/production-small-work runtime rather than an unlimited free GPU promise.
+
+Required renderer environment variables:
+
+- `ZOZ_HF_SPACE_URL` — URL of the deployed ZOZ Native Image Space.
+- `ZOZ_HF_SPACE_SECRET` — optional Space secret if renderer authentication is enabled.
+- `HF_TOKEN` — optional token for authenticated/private Spaces.
+- `ZOZ_IMAGE_MODEL` — optional model override; default `Qwen/Qwen-Image-2512`.
+
+The renderer keeps a fallback to the existing ZOZ-owned native HTTP service through `ZOZ_NATIVE_IMAGE_RENDERER_URL`. No paid provider is introduced by this change.
