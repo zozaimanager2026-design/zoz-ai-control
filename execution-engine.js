@@ -75,6 +75,13 @@ function advanceSafeTask(state,task){
  if(task.financial||isFinanciallySensitive(`${task.title} ${task.description}`)){task.financial=true;task.humanApprovalRequired=true;task.autoExecutable=false;task.status="approval_required";task.updatedAt=now();audit(state,"financial_gate_blocked",{taskId:task.id});return {taskId:task.id,executed:false,reason:"financial_approval_required"};}
  if(task.plan?.executionBlocked){task.status="blocked";task.updatedAt=now();audit(state,"execution_blocked_no_tool",{taskId:task.id,reason:task.plan.executionBlockReason});return {taskId:task.id,executed:false,reason:task.plan.executionBlockReason,executionMode:task.plan.toolRouting.executionMode};}
  if(!task.autoExecutable)return {taskId:task.id,executed:false,reason:"connector_or_human_step_required"};
+ // Stop exactly at the renderer handoff. The renderer bridge performs the real
+ // execution and moves the task to quality_check after an artifact is produced.
+ if(task.stage==="execute"){
+   task.status="in_progress";task.updatedAt=now();
+   audit(state,"execution_renderer_handoff_pending",{taskId:task.id,serviceId:task.serviceId||null,selectedTools:task.plan.tools});
+   return {taskId:task.id,executed:false,reason:"renderer_execution_pending",handoff:"renderer",stage:"execute",status:"in_progress",executionMode:task.plan.toolRouting.executionMode,selectedTools:task.plan.tools};
+ }
  const seq=task.plan.stages,current=seq.indexOf(task.stage),next=seq[Math.min(current+1,seq.length-1)];
  task.stage=next;task.status=next==="follow_up"?"completed":"in_progress";task.updatedAt=now();
  if(task.status==="completed")state.experience.push({id:id("exp"),taskId:task.id,serviceId:task.serviceId||null,skills:task.plan.skills,tools:task.plan.tools,result:"completed",recordedAt:now()});
