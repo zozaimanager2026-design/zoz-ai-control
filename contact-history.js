@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 
 const now = () => new Date().toISOString();
+const CONTACT_DUPLICATE_POLICY_VERSION = 2;
 
 function digits(value = "") {
   return String(value).replace(/\D/g, "");
@@ -84,4 +85,4 @@ function createContactEvent(contact = {}, event = {}) {
   };
 }
 
-module.exports = { normalizePhone, normalizeText, normalizeWebsite, fingerprint, matchContact, shouldSuppress, createContactEvent };
+module.exports = { CONTACT_DUPLICATE_POLICY_VERSION, normalizePhone, normalizeText, normalizeWebsite, fingerprint, matchContact, shouldSuppress, createContactEvent };
