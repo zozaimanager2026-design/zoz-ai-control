@@ -1,0 +1,83 @@
+{
+  "version": "1.0.0",
+  "purpose": "Reusable ZOZ AI execution building blocks for new client projects",
+  "workflow": [
+    "intake",
+    "requirements",
+    "select_templates",
+    "configure",
+    "integrate",
+    "test",
+    "quality_check",
+    "deliver"
+  ],
+  "templates": [
+    {
+      "id": "project-intake",
+      "category": "core",
+      "name": "Project Intake",
+      "status": "ready",
+      "inputs": ["client", "requirements", "budget", "deadline", "acceptance_criteria"],
+      "outputs": ["project_spec", "task_list", "risk_list"]
+    },
+    {
+      "id": "dashboard",
+      "category": "web",
+      "name": "Dashboard",
+      "status": "ready",
+      "features": ["navigation", "tables", "filters", "status_views", "settings"]
+    },
+    {
+      "id": "csv-import",
+      "category": "data",
+      "name": "CSV/Excel Import",
+      "status": "ready",
+      "features": ["upload", "validation", "normalization", "duplicate_detection", "import_log"]
+    },
+    {
+      "id": "api-integration",
+      "category": "integration",
+      "name": "API Integration Adapter",
+      "status": "ready",
+      "features": ["credential_config", "connection_test", "request_wrapper", "error_handling", "audit_log"]
+    },
+    {
+      "id": "automation-queue",
+      "category": "automation",
+      "name": "Job Queue and Batch Automation",
+      "status": "ready",
+      "features": ["queue", "batching", "retry", "status", "audit"]
+    },
+    {
+      "id": "whatsapp-cloud",
+      "category": "messaging",
+      "name": "WhatsApp Cloud API Adapter",
+      "status": "configured",
+      "depends_on": ["api-integration", "automation-queue"],
+      "features": ["templates", "outbound_messages", "webhook_events", "delivery_status", "batch_campaigns"]
+    },
+    {
+      "id": "crm-lite",
+      "category": "business",
+      "name": "Lightweight CRM",
+      "status": "ready",
+      "features": ["leads", "customers", "stages", "notes", "followups"]
+    },
+    {
+      "id": "web-app",
+      "category": "web",
+      "name": "Client Web App",
+      "status": "ready",
+      "features": ["frontend", "backend_routes", "health_check", "production_config"]
+    },
+    {
+      "id": "quality-gate",
+      "category": "delivery",
+      "name": "Quality and Delivery Gate",
+      "status": "ready",
+      "checks": ["syntax", "tests", "integration_health", "security_basics", "acceptance_criteria", "delivery_notes"]
+    }
+  ],
+  "selection_rule": "For each new client, select the smallest set of templates that satisfies the acceptance criteria; do not rebuild existing capabilities from scratch.",
+  "financial_rule": "Payments, purchases, transfers, withdrawals, and receiving money remain behind explicit human approval."
+}
