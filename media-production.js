@@ -1,9 +1,10 @@
-// ZOZ AI Professional Video Production Engine v4
-// Compatibility-first renderer: no legacy style presets; stale render state is reset before polling.
+// ZOZ AI Professional Video Production Engine v5
+// Compatibility-first renderer: numeric font sizes plus one-time migration of stale render projects.
 const now = () => new Date().toISOString();
 const TARGET_VIDEO_SECONDS = 60;
 const MAX_NARRATION_CHARS = 900;
 const MAX_RENDER_RETRIES = 3;
+const RENDERER_SCHEMA_VERSION = 5;
 
 async function fetchJson(url, options = {}) {
   const controller = new AbortController();
@@ -42,7 +43,7 @@ function movieFor(content) {
     { type: "text", text: index === 0 ? title : "ZOZ AI", duration: -1, settings: { "font-size": 48, "font-weight": 900, "color": "#FFFFFF", "align": "center" } },
     { type: "voice", text: chunk, model: process.env.J2V_VOICE_MODEL || "azure", voice: process.env.J2V_VOICE || "ar-SA-HamedNeural", duration: -1 }
   ] }));
-  return normalizeRendererSchema({ resolution: "full-hd", quality: "high", cache: false, comment: `ZOZ AI professional Arabic content episode — renderer v4 — target ${TARGET_VIDEO_SECONDS}s`, scenes, elements: [{ type: "subtitles", language: "ar", settings: { style: "classic-progressive", position: "bottom-center", "max-words-per-line": 4, "font-size": 48, "font-weight": 900, "line-color": "white", "word-color": "#D8FF3E", "outline-color": "black", "outline-width": 4 } }] });
+  return normalizeRendererSchema({ resolution: "full-hd", quality: "high", cache: false, comment: `ZOZ AI professional Arabic content episode — renderer v5 — target ${TARGET_VIDEO_SECONDS}s`, scenes, elements: [{ type: "subtitles", language: "ar", settings: { style: "classic-progressive", position: "bottom-center", "max-words-per-line": 4, "font-size": 48, "font-weight": 900, "line-color": "white", "word-color": "#D8FF3E", "outline-color": "black", "outline-width": 4 } }] });
 }
 function legacyRendererError(reason) { const text = String(reason || "").toLowerCase(); return text.includes("font-size") && (text.includes("string") || text.includes("42px") || text.includes("expected integer")); }
 async function submitRender(content) {
@@ -65,20 +66,20 @@ async function publishWithUploadPost(content, videoUrl) {
 async function runMediaProductionAgent(memoryStore) {
   const memory = await memoryStore.load();
   const active = memory.content.filter(x => x.goalKey === "youtube_growth" && x.status !== "published");
-  const legacy = active.find(x => legacyRendererError(x.renderError) || (x.renderProjectId && x.rendererVersion !== 4));
-  if (legacy) { await memoryStore.remember("content", { ...legacy, status: "planned", rendererVersion: 4, renderProjectId: null, renderStatus: "legacy_state_reset", renderRetryCount: 0, renderError: null, retryAt: now(), retryExhausted: false, videoUrl: null }); }
+  const legacy = active.find(x => x.rendererMigrationVersion !== RENDERER_SCHEMA_VERSION && (x.renderProjectId || x.renderError || x.rendererVersion));
+  if (legacy) { await memoryStore.remember("content", { ...legacy, status: "planned", rendererVersion: RENDERER_SCHEMA_VERSION, rendererMigrationVersion: RENDERER_SCHEMA_VERSION, renderProjectId: null, renderStatus: "legacy_state_reset_v5", renderRetryCount: 0, renderError: null, retryAt: now(), retryExhausted: false, videoUrl: null }); }
   const refreshed = await memoryStore.load(); const items = refreshed.content.filter(x => x.goalKey === "youtube_growth" && x.status !== "published");
   const pending = items.find(x => x.renderProjectId && !x.videoUrl && x.status !== "failed");
   if (pending) {
     const polled = await pollRender(pending.renderProjectId);
-    if (polled.stage === "render_ready") { await memoryStore.remember("content", { ...pending, status: "ready", videoUrl: polled.videoUrl, renderStatus: "done", renderedAt: now(), previewApproved: false, rendererVersion: 4 }); return { ok: true, stage: "render_ready", contentId: pending.id, videoUrl: polled.videoUrl }; }
-    if (polled.stage === "render_failed") { const attempts = Number(pending.renderRetryCount || 0); if (polled.compatibilityIssue && attempts < MAX_RENDER_RETRIES) { const rebuilt = await submitRender(pending); if (rebuilt.ok) { await memoryStore.remember("content", { ...pending, status: "rendering", rendererVersion: 4, renderProjectId: rebuilt.projectId, renderSubmittedAt: rebuilt.submittedAt, renderStatus: "submitted_recovered", renderRetryCount: attempts + 1, renderError: null, targetDurationSeconds: TARGET_VIDEO_SECONDS }); return { ok: true, stage: "render_recovered", contentId: pending.id, projectId: rebuilt.projectId, targetDurationSeconds: TARGET_VIDEO_SECONDS }; } await memoryStore.remember("content", { ...pending, status: "planned", rendererVersion: 4, renderProjectId: null, renderStatus: "rebuild_pending", renderRetryCount: attempts + 1, renderError: rebuilt.reason || polled.reason || null, retryAt: now() }); return { ok: false, stage: "render_rebuild_pending", contentId: pending.id, reason: rebuilt.reason || polled.reason || null, compatibilityIssue: true }; } await memoryStore.remember("content", { ...pending, status: "failed", renderProjectId: null, renderStatus: "failed", renderError: polled.reason || null, retryAt: now(), retryExhausted: attempts >= MAX_RENDER_RETRIES }); return { ok: false, stage: "render_failed", contentId: pending.id, reason: polled.reason || null, retryExhausted: attempts >= MAX_RENDER_RETRIES }; }
+    if (polled.stage === "render_ready") { await memoryStore.remember("content", { ...pending, status: "ready", videoUrl: polled.videoUrl, renderStatus: "done", renderedAt: now(), previewApproved: false, rendererVersion: RENDERER_SCHEMA_VERSION, rendererMigrationVersion: RENDERER_SCHEMA_VERSION }); return { ok: true, stage: "render_ready", contentId: pending.id, videoUrl: polled.videoUrl }; }
+    if (polled.stage === "render_failed") { const attempts = Number(pending.renderRetryCount || 0); if (polled.compatibilityIssue && attempts < MAX_RENDER_RETRIES) { const rebuilt = await submitRender(pending); if (rebuilt.ok) { await memoryStore.remember("content", { ...pending, status: "rendering", rendererVersion: RENDERER_SCHEMA_VERSION, rendererMigrationVersion: RENDERER_SCHEMA_VERSION, renderProjectId: rebuilt.projectId, renderSubmittedAt: rebuilt.submittedAt, renderStatus: "submitted_recovered", renderRetryCount: attempts + 1, renderError: null, targetDurationSeconds: TARGET_VIDEO_SECONDS }); return { ok: true, stage: "render_recovered", contentId: pending.id, projectId: rebuilt.projectId, targetDurationSeconds: TARGET_VIDEO_SECONDS }; } await memoryStore.remember("content", { ...pending, status: "planned", rendererVersion: RENDERER_SCHEMA_VERSION, rendererMigrationVersion: RENDERER_SCHEMA_VERSION, renderProjectId: null, renderStatus: "rebuild_pending", renderRetryCount: attempts + 1, renderError: rebuilt.reason || polled.reason || null, retryAt: now() }); return { ok: false, stage: "render_rebuild_pending", contentId: pending.id, reason: rebuilt.reason || polled.reason || null, compatibilityIssue: true }; } await memoryStore.remember("content", { ...pending, status: "failed", renderProjectId: null, renderStatus: "failed", renderError: polled.reason || null, retryAt: now(), retryExhausted: attempts >= MAX_RENDER_RETRIES }); return { ok: false, stage: "render_failed", contentId: pending.id, reason: polled.reason || null, retryExhausted: attempts >= MAX_RENDER_RETRIES }; }
     return { ok: polled.ok, stage: polled.stage, contentId: pending.id, status: polled.status || null };
   }
   const draft = items.find(x => ["planned", "draft", "failed"].includes(x.status) && !x.renderProjectId && Number(x.renderRetryCount || 0) < MAX_RENDER_RETRIES);
   if (!draft) return { ok: true, stage: "no_content_to_render" }; if (!rendererConfigured()) return { ok: false, stage: "needs_renderer", reason: "J2V_API_KEY_missing", contentId: draft.id };
-  const submitted = await submitRender({ ...draft, rendererVersion: 4 }); if (!submitted.ok) return { ...submitted, contentId: draft.id };
-  await memoryStore.remember("content", { ...draft, rendererVersion: 4, status: "rendering", renderProjectId: submitted.projectId, renderSubmittedAt: submitted.submittedAt, renderStatus: "submitted", renderRetryCount: Number(draft.renderRetryCount || 0) + 1, targetDurationSeconds: TARGET_VIDEO_SECONDS, renderError: null });
+  const submitted = await submitRender({ ...draft, rendererVersion: RENDERER_SCHEMA_VERSION }); if (!submitted.ok) return { ...submitted, contentId: draft.id };
+  await memoryStore.remember("content", { ...draft, rendererVersion: RENDERER_SCHEMA_VERSION, rendererMigrationVersion: RENDERER_SCHEMA_VERSION, status: "rendering", renderProjectId: submitted.projectId, renderSubmittedAt: submitted.submittedAt, renderStatus: "submitted", renderRetryCount: Number(draft.renderRetryCount || 0) + 1, targetDurationSeconds: TARGET_VIDEO_SECONDS, renderError: null });
   return { ok: true, stage: "render_submitted", contentId: draft.id, projectId: submitted.projectId, targetDurationSeconds: TARGET_VIDEO_SECONDS };
 }
 module.exports = { runMediaProductionAgent, rendererConfigured, movieFor, submitRender, pollRender, publishWithUploadPost, TARGET_VIDEO_SECONDS };
