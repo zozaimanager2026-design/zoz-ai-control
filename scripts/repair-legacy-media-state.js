@@ -36,3 +36,5 @@ const RENDERER_SCHEMA_VERSION = 5;
   console.error("[ZOZ media state repair] failed", error?.message || error);
   process.exitCode = 1;
 });
+
+// v5 migration is intentionally idempotent so restarts cannot regress media schema.
