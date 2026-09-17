@@ -16,13 +16,33 @@ function uploadPostConfigured() { return Boolean(process.env.UPLOAD_POST_API_KEY
 function extractNarration(content) { const text = String(content.body || "").replace(/```[\s\S]*?```/g, "").trim(); return text.slice(0, 12000) || String(content.title || "ZOZ AI"); }
 function fitInitialDuration(text) { const clean = String(text || "").replace(/\r/g, "").trim(); if (clean.length <= MAX_NARRATION_CHARS) return clean; const sentences = clean.split(/(?<=[.!؟])\s+/).filter(Boolean); let out = ""; for (const sentence of sentences) { const next = `${out} ${sentence}`.trim(); if (next.length > MAX_NARRATION_CHARS) break; out = next; } return (out || clean.slice(0, MAX_NARRATION_CHARS)).trim(); }
 function splitNarration(text) { const clean = fitInitialDuration(text); const paragraphs = clean.split(/\n{2,}/).map(x => x.replace(/^\s*(?:#+|[-•])\s*/, "").trim()).filter(Boolean); if (paragraphs.length >= 3) return paragraphs.slice(0, 6).map(x => x.slice(0, 450)); const sentences = clean.split(/(?<=[.!؟])\s+/).filter(Boolean); const chunks = []; let current = ""; for (const sentence of sentences) { const next = `${current} ${sentence}`.trim(); if (next.length > 420 && current) { chunks.push(current.trim()); current = sentence; } else current = next; } if (current) chunks.push(current); return (chunks.length ? chunks : [clean]).slice(0, 6).map(x => x.slice(0, 500)); }
+function normalizeRendererSchema(value) {
+  if (Array.isArray(value)) return value.map(normalizeRendererSchema);
+  if (!value || typeof value !== "object") {
+    if (typeof value === "string") {
+      const match = value.trim().match(/^(\d+(?:\.\d+)?)px$/i);
+      if (match) return Number(match[1]);
+    }
+    return value;
+  }
+  const output = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (key === "font-size" && typeof child === "string") {
+      const match = child.trim().match(/^(\d+(?:\.\d+)?)px$/i);
+      output[key] = match ? Number(match[1]) : child;
+    } else {
+      output[key] = normalizeRendererSchema(child);
+    }
+  }
+  return output;
+}
 function movieFor(content) {
   const narration = extractNarration(content); const title = String(content.title || "ZOZ AI").slice(0, 140); const chunks = splitNarration(narration);
   const scenes = chunks.map((chunk, index) => ({ id: `zoz-scene-${index + 1}`, duration: -1, comment: `ZOZ AI — ${title} — مشهد ${index + 1}`, "background-color": "#0B1020", ...(index ? { transition: { type: "xfade", style: "fade", duration: 0.45 } } : {}), elements: [
     { type: "text", text: index === 0 ? title : "ZOZ AI", duration: -1, settings: { "font-size": 48, "font-weight": 900, "color": "#FFFFFF", "align": "center" } },
     { type: "voice", text: chunk, model: process.env.J2V_VOICE_MODEL || "azure", voice: process.env.J2V_VOICE || "ar-SA-HamedNeural", duration: -1 }
   ] }));
-  return { resolution: "full-hd", quality: "high", cache: false, comment: `ZOZ AI professional Arabic content episode — renderer v4 — target ${TARGET_VIDEO_SECONDS}s`, scenes, elements: [{ type: "subtitles", language: "ar", settings: { style: "classic-progressive", position: "bottom-center", "max-words-per-line": 4, "font-size": 48, "font-weight": 900, "line-color": "white", "word-color": "#D8FF3E", "outline-color": "black", "outline-width": 4 } }] };
+  return normalizeRendererSchema({ resolution: "full-hd", quality: "high", cache: false, comment: `ZOZ AI professional Arabic content episode — renderer v4 — target ${TARGET_VIDEO_SECONDS}s`, scenes, elements: [{ type: "subtitles", language: "ar", settings: { style: "classic-progressive", position: "bottom-center", "max-words-per-line": 4, "font-size": 48, "font-weight": 900, "line-color": "white", "word-color": "#D8FF3E", "outline-color": "black", "outline-width": 4 } }] });
 }
 function legacyRendererError(reason) { const text = String(reason || "").toLowerCase(); return text.includes("font-size") && (text.includes("string") || text.includes("42px") || text.includes("expected integer")); }
 async function submitRender(content) {
