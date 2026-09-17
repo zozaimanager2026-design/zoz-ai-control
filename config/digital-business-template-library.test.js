@@ -7,8 +7,10 @@ const {
   matchTemplates
 } = require('./digital-business-template-library');
 
-assert.equal(TEMPLATE_LIBRARY_VERSION, 1);
-assert.ok(templates.length >= 12);
+assert.equal(TEMPLATE_LIBRARY_VERSION, 2);
+assert.equal(templates.length, 11);
+assert.ok(!getTemplate('short-video-pack'));
+assert.ok(!templates.some((template) => template.category === 'video'));
 assert.equal(getTemplate('landing-page').name, 'Landing Page');
 assert.equal(getTemplate('missing-template'), null);
 assert.equal(listTemplates({ category: 'web' }).length, 2);
