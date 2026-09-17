@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: zoz-ai-independent-renderer
+    runtime: node
+    region: frankfurt
+    plan: free
+    autoDeploy: true
+    buildCommand: npm install
+    startCommand: npm run start:renderer
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: RENDERER_INTERNAL_SECRET
+        sync: false
