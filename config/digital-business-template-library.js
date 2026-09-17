@@ -1,12 +1,14 @@
 /**
  * ZOZ AI — Digital Business Template Library
  *
- * Reusable execution blueprints for client work. Templates are intentionally
- * renderer-independent so business delivery can continue while media tooling
- * evolves. Financial actions always remain behind the existing approval gate.
+ * Reusable execution blueprints for client digital-business work only.
+ * The library is category-extensible: additional digital-business sections
+ * can be added later without changing the execution API contract.
+ * Video/media templates are intentionally deferred for now.
+ * Financial actions always remain behind the existing approval gate.
  */
 
-const TEMPLATE_LIBRARY_VERSION = 1;
+const TEMPLATE_LIBRARY_VERSION = 2;
 
 const templates = [
   {
@@ -73,17 +75,6 @@ const templates = [
     inputs: ['business_topic', 'target_market', 'keywords', 'tone', 'site_context'],
     workflow: ['research', 'keyword_map', 'outline', 'draft', 'quality_check', 'delivery'],
     quality_checks: ['search intent', 'originality', 'readability', 'metadata', 'internal links'],
-    approval_required: false
-  },
-  {
-    id: 'short-video-pack',
-    category: 'video',
-    name: 'Short Video Pack',
-    goal: 'Produce a repeatable short-form video package for social channels.',
-    deliverables: ['hooks', 'scripts', 'scene plan', 'caption copy', 'CTA', 'render-ready production data'],
-    inputs: ['topic', 'audience', 'platform', 'brand_assets', 'offer'],
-    workflow: ['idea', 'hook', 'script', 'scene_plan', 'render', 'quality_check', 'delivery_or_publish'],
-    quality_checks: ['hook clarity', 'duration', 'captions', 'CTA', 'platform format'],
     approval_required: false
   },
   {
@@ -164,9 +155,8 @@ function matchTemplates(request = '') {
     'ecommerce-product-pack': ['shopify', 'product', 'منتج', 'متجر'],
     'social-content-month': ['social', 'سوشيال', 'منشورات', 'محتوى شهر'],
     'seo-content-pack': ['seo', 'article', 'مقال', 'محركات البحث'],
-    'short-video-pack': ['video', 'reel', 'short', 'فيديو', 'ريلز'],
     'automation-workflow': ['automation', 'workflow', 'أتمتة', 'اوتوميشن'],
-    'lead-generation-system': ['lead', 'leads', 'عملاء محتملين', 'عملاء محتملين'],
+    'lead-generation-system': ['lead', 'leads', 'عملاء محتملين'],
     'digital-offer-campaign': ['campaign', 'offer', 'حملة', 'عرض'],
     'digital-service-delivery': ['service', 'خدمة', 'مشروع'],
     'client-project-qa-delivery': ['delivery', 'تسليم', 'جودة', 'qa']
