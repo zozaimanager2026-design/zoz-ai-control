@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Extensible library contract for digital client work only.",
+  "rules": {
+    "digitalOnly": true,
+    "videoTemplatesDeferred": true,
+    "financialApprovalGateImmutable": true
+  },
+  "templateRequiredFields": [
+    "id",
+    "category",
+    "name",
+    "goal",
+    "deliverables",
+    "inputs",
+    "workflow",
+    "quality_checks",
+    "approval_required"
+  ],
+  "allowedCategories": [
+    "design",
+    "web",
+    "ecommerce",
+    "social-media",
+    "content",
+    "automation",
+    "marketing",
+    "client-services",
+    "operations"
+  ],
+  "extensionPolicy": "Add a category/template here only when its execution workflow, inputs, deliverables and quality checks are defined and tested."
+}
