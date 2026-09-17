@@ -30,14 +30,41 @@ module.exports = async (req, res) => {
     if(action==="create_business_plan") return res.status(200).json(createExecutionPlan(body.request||body));
     if(action==="advance_business_plan") return res.status(200).json(advanceExecution(body.plan,Array.isArray(body.completedSteps)?body.completedSteps:[]));
     if(action==="create_task_from_request") {
-      const plan=createExecutionPlan(body.request||body);
+      const request=body.request&&typeof body.request==="object"?body.request:{...body};
+      const plan=createExecutionPlan(request);
       if(!plan.ok) return res.status(422).json(plan);
-      const task=createTask(state,{...body, title:body.title||plan.template.name, description:body.description||body.request?.description||"Digital business execution", serviceId:body.serviceId||null, templateId:plan.template.id, deliverables:plan.deliverables, workflow:plan.workflow, approvalRequired:plan.approval.required, status:plan.approval.required?"approval_required":"pending"});
+
+      const task=createTask(state,{
+        ...body,
+        ...request,
+        title:body.title||plan.template.name,
+        description:body.description||request.description||request.request||"Digital business execution",
+        serviceId:body.serviceId||request.serviceId||null,
+        templateId:plan.template.id,
+        clientRef:body.clientRef||request.clientRef||null,
+        source:body.source||request.source||"digital_business_request"
+      });
+
+      task.digitalExecution={
+        template:plan.template,
+        workflow:plan.workflow,
+        deliverables:plan.deliverables,
+        qualityChecks:plan.qualityChecks,
+        financialActions:plan.financialActions,
+        approval:plan.approval,
+        completedSteps:[],
+        status:plan.approval.required?"approval_required":"ready_to_execute"
+      };
+
+      if (plan.approval.required) {
+        task.status="approval_required";
+        task.humanApprovalRequired=true;
+        task.autoExecutable=false;
+      }
+
       await store.save(state);
       return res.status(201).json({ok:true,durable:store.durable,plan,task});
     }
     return res.status(400).json({ok:false,error:"unknown_action",allowed:["create_task","score_opportunity","get_service","fallback_tools","list_templates","match_template","create_business_plan","advance_business_plan","create_task_from_request"]});
   } catch(error) { return res.status(500).json({ok:false,error:"execution_api_error",message:error.message}); }
 };
-
-// Railway sync marker: keep Digital Business Execution API in the deployment watch set.
