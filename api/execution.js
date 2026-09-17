@@ -39,3 +39,5 @@ module.exports = async (req, res) => {
     return res.status(400).json({ok:false,error:"unknown_action",allowed:["create_task","score_opportunity","get_service","fallback_tools","list_templates","match_template","create_business_plan","advance_business_plan","create_task_from_request"]});
   } catch(error) { return res.status(500).json({ok:false,error:"execution_api_error",message:error.message}); }
 };
+
+// Railway sync marker: keep Digital Business Execution API in the deployment watch set.
