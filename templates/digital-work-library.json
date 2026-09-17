@@ -1,0 +1,43 @@
+{
+  "version": "1.0.0",
+  "purpose": "Reusable execution templates for ZOZ AI digital-business work across client projects.",
+  "workflow": ["intake","requirements","scope","template_selection","assembly","integration","test","quality_gate","delivery","handover"],
+  "financial_rule": "Payments, purchases, transfers, withdrawals, collections and receiving money require explicit human approval.",
+  "modules": [
+    {"id":"websites","name":"مواقع الويب","templates":["landing-page","company-site","portfolio-site","blog","web-app"]},
+    {"id":"web-apps","name":"تطبيقات الويب","templates":["auth","dashboard","admin-panel","forms","file-upload","search-filter","notifications"]},
+    {"id":"mobile","name":"تطبيقات الموبايل","templates":["mobile-app-shell","api-client","auth","push-notifications","release-checklist"]},
+    {"id":"ecommerce","name":"التجارة الإلكترونية","templates":["storefront","catalog","cart","checkout","orders","customer-area","inventory"]},
+    {"id":"crm","name":"CRM وإدارة العملاء","templates":["leads","customers","pipeline","follow-up","tasks","notes","reports"]},
+    {"id":"automation","name":"الأتمتة","templates":["scheduled-job","queue","retry","webhook","workflow","approval-gate","audit-log"]},
+    {"id":"ai","name":"الذكاء الاصطناعي","templates":["ai-assistant","prompt-workflow","document-analysis","classification","lead-scoring","content-generation","human-review"]},
+    {"id":"whatsapp","name":"WhatsApp","templates":["cloud-api","templates","campaigns","batch-send","delivery-status","webhook"]},
+    {"id":"social","name":"السوشيال ميديا","templates":["content-calendar","post-package","media-assets","approval","publish-queue","analytics"]},
+    {"id":"youtube","name":"YouTube","templates":["video-package","thumbnail","metadata","upload","status-check","content-calendar"]},
+    {"id":"content","name":"المحتوى","templates":["article","social-post","video-script","short-form","content-plan","seo-brief"]},
+    {"id":"seo","name":"SEO","templates":["keyword-brief","on-page-check","metadata","internal-links","technical-checklist","report"]},
+    {"id":"design","name":"التصميم والهوية","templates":["brand-kit","logo-brief","social-kit","presentation","marketing-assets","export-pack"]},
+    {"id":"data","name":"البيانات والتحليلات","templates":["csv-cleaning","excel-processing","data-validation","dashboard","kpi-report","segmentation"]},
+    {"id":"integrations","name":"ربط الأنظمة وAPIs","templates":["api-adapter","oauth","token-config","webhook","sync","error-handler","health-check"]},
+    {"id":"databases","name":"قواعد البيانات","templates":["schema","migration","crud","backup-check","query-layer","persistence"]},
+    {"id":"cloud","name":"النشر والاستضافة","templates":["environment","deployment","domain-check","health-check","logs","rollback"]},
+    {"id":"qa","name":"الاختبار وضمان الجودة","templates":["smoke-test","api-test","form-test","auth-test","integration-test","regression-check","delivery-checklist"]},
+    {"id":"documents","name":"المستندات والملفات","templates":["document-template","pdf-report","proposal","requirements-doc","handover-doc"]},
+    {"id":"business","name":"أعمال رقمية وتشغيل العملاء","templates":["client-intake","quotation","project-plan","task-board","status-report","handover","support-window"]},
+    {"id":"marketing","name":"التسويق الرقمي","templates":["campaign-plan","audience","offer-page","lead-capture","follow-up","analytics"]},
+    {"id":"support","name":"الدعم وخدمة العملاء","templates":["ticketing","faq","knowledge-base","response-workflow","escalation","resolution-log"]}
+  ],
+  "shared_components": [
+    "authentication","roles-permissions","configuration","secrets-boundary","audit-log","error-handling","logging","notifications","search","pagination","file-storage","health-check","approval-gate","quality-gate","delivery-package"
+  ],
+  "project_recipe": {
+    "step_1":"حدد نوع العمل والمخرجات",
+    "step_2":"اختر الوحدات المطلوبة من المكتبة",
+    "step_3":"ركّب القوالب المشتركة تلقائياً",
+    "step_4":"أضف تكاملات العميل فقط",
+    "step_5":"اختبر الوظائف والتكاملات",
+    "step_6":"مرر Quality Gate",
+    "step_7":"جهّز Production والتسليم",
+    "step_8":"احفظ التحسينات كقالب قابل لإعادة الاستخدام"
+  }
+}
