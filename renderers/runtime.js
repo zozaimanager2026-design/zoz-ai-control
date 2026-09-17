@@ -6,6 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const { RENDERERS, resolveRenderer, buildRendererJob, getRenderPolicy } = require("./index");
 const { createDefaultAdapters } = require("./local-executors");
+const { renderImage } = require("./native-image-adapter");
 
 const ROOT = path.resolve(__dirname, "..");
 const STATE_DIR = path.join(ROOT, ".zoz-renderer");
@@ -15,11 +16,11 @@ const IMPROVEMENTS_FILE = path.join(STATE_DIR, "improvements.json");
 function ensureStateDir() { fs.mkdirSync(STATE_DIR, { recursive: true }); }
 function readJson(file, fallback) { try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return fallback; } }
 function writeJson(file, value) { ensureStateDir(); const temp = `${file}.tmp`; fs.writeFileSync(temp, JSON.stringify(value, null, 2)); fs.renameSync(temp, file); }
-function createRuntimeState() { return { version: 2, status: "ready", rendererCount: Object.keys(RENDERERS).length, jobs: [], completed: 0, failed: 0, lastRunAt: null, selfDevelopment: { enabled: true, mode: "safe", pendingImprovements: 0 }, financialApprovalRequired: true }; }
+function createRuntimeState() { return { version: 3, status: "ready", rendererCount: Object.keys(RENDERERS).length, jobs: [], completed: 0, failed: 0, lastRunAt: null, selfDevelopment: { enabled: true, mode: "safe", pendingImprovements: 0 }, nativeImage: { enabled: true, mode: "self-hosted", provider: "zoz-native-image-renderer" }, financialApprovalRequired: true }; }
 function loadState() { return readJson(STATE_FILE, createRuntimeState()); }
 function saveJsonState(state) { writeJson(STATE_FILE, state); }
-function saveState(state) { state.lastRunAt = new Date().toISOString(); state.rendererCount = Object.keys(RENDERERS).length; saveJsonState(state); }
-function inspectLibrary() { const failures = []; for (const [section, renderer] of Object.entries(RENDERERS)) if (!renderer.id || !renderer.queue || !Array.isArray(renderer.capabilities)) failures.push({ section, reason: "invalid_renderer_contract" }); return { ok: failures.length === 0, rendererCount: Object.keys(RENDERERS).length, failures, policy: getRenderPolicy(), localExecution: true }; }
+function saveState(state) { state.lastRunAt = new Date().toISOString(); state.rendererCount = Object.keys(RENDERERS).length; state.nativeImage = { enabled: true, mode: "self-hosted", provider: "zoz-native-image-renderer" }; saveJsonState(state); }
+function inspectLibrary() { const failures = []; for (const [section, renderer] of Object.entries(RENDERERS)) if (!renderer.id || !renderer.queue || !Array.isArray(renderer.capabilities)) failures.push({ section, reason: "invalid_renderer_contract" }); return { ok: failures.length === 0, rendererCount: Object.keys(RENDERERS).length, failures, policy: getRenderPolicy(), localExecution: true, nativeImage: { enabled: true, provider: "zoz-native-image-renderer" } }; }
 function queue(task) { const job = buildRendererJob(task); if (!job.ok) return job; const state = loadState(); const queued = { ...job, createdAt: new Date().toISOString(), status: "queued" }; state.jobs.push(queued); if (state.jobs.length > 500) state.jobs = state.jobs.slice(-500); saveState(state); return queued; }
 function execute(job, adapters = {}) {
   const state = loadState();
@@ -27,6 +28,7 @@ function execute(job, adapters = {}) {
   if (!renderer) return Promise.resolve({ ok: false, reason: "renderer_not_registered" });
   if (job.approval?.financial && job.approval?.humanApprovalRequired !== false) return Promise.resolve({ ok: false, status: "approval_required", reason: "financial_approval_required" });
   const registry = { ...createDefaultAdapters(), ...adapters };
+  if (renderer.section === "media" && (job.input?.deliverables || []).some(item => ["images", "image", "thumbnail"].includes(item))) registry[renderer.id] = renderImage;
   const adapter = registry[renderer.id];
   const result = typeof adapter === "function" ? adapter(job.input) : { ok: false, status: "blocked", reason: "external_adapter_required", rendererId: renderer.id };
   const finalResult = result && typeof result.then === "function" ? result : Promise.resolve(result);
