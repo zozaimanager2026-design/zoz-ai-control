@@ -1,0 +1,1 @@
+Local renderer is the default execution path for supported digital-production skills. External tools remain optional adapters; financial approval remains mandatory.
