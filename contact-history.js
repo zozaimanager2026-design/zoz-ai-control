@@ -59,7 +59,10 @@ function shouldSuppress(candidate = {}, history = []) {
   if (!match.matched) return { suppressed: false, ...match };
   const status = String(match.record?.status || "").toLowerCase();
   const hard = new Set(["contacted", "sent", "replied", "qualified", "rejected", "opted_out", "do_not_contact", "invalid"]);
-  return { suppressed: hard.has(status) || Boolean(match.record?.suppress), ...match };
+  return {
+    suppressed: hard.has(status) || Boolean(match.record?.suppress) || match.reason === "website" || match.reason === "name_address",
+    ...match
+  };
 }
 
 function createContactEvent(contact = {}, event = {}) {
