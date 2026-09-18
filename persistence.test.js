@@ -12,7 +12,8 @@ const vercel = JSON.parse(fs.readFileSync(path.join(root, "vercel.json"), "utf8"
 
 assert.strictEqual(packageJson.scripts["vercel-build"], "node scripts/enable-postgres-persistence.js");
 assert.ok(packageJson.scripts.test.includes("persistence.test.js"));
-assert.ok(vercel.builds.some((build) => build.use === "@vercel/node" && build.src === "server.js"));
+assert.ok(Array.isArray(vercel.rewrites), "Vercel must proxy API traffic to the Railway production service");
+assert.ok(vercel.rewrites.some((rule) => rule.source === "/api/:path*" && String(rule.destination).includes("zoz-ai-control-production.up.railway.app/api/:path*")));
 assert.ok(script.includes('const { Pool } = require("pg");'));
 assert.ok(script.includes("const pgPool = DATABASE_URL"));
 assert.ok(script.includes("async function readKvState()"));
