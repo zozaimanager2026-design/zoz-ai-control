@@ -201,6 +201,66 @@ function renderCollections(leads, orders, opportunities) {
   document.getElementById("orderList").innerHTML = orders.length ? orders.map(o => `<div class="item"><strong>${escapeHtml(o.product)}</strong><br>السعر: ${escapeHtml(o.quotedPrice)} — العربون: ${escapeHtml(o.depositRequired)}<br><span class="pill">${escapeHtml(o.status)}</span></div>`).join("") : "لا توجد طلبات.";
   document.getElementById("opportunityList").innerHTML = opportunities.length ? opportunities.map(o => `<div class="item"><strong>${escapeHtml(o.title)}</strong><br>${escapeHtml(o.description)}<br><span class="pill">Score ${escapeHtml(o.score)}</span> <span class="pill">${escapeHtml(o.status)}</span></div>`).join("") : "لا توجد فرص.";
 }
+async function browserZeroGpu(input = {}) {
+  const space = "https://qwen-qwen-image.hf.space";
+  const ratio = (() => {
+    const w = Number(input.width || 1024), h = Number(input.height || 1024), r = w / Math.max(1,h);
+    if (Math.abs(r - 16/9) < 0.08) return "16:9";
+    if (Math.abs(r - 9/16) < 0.08) return "9:16";
+    if (Math.abs(r - 4/3) < 0.08) return "4:3";
+    if (Math.abs(r - 3/4) < 0.08) return "3:4";
+    if (Math.abs(r - 3/2) < 0.08) return "3:2";
+    if (Math.abs(r - 2/3) < 0.08) return "2:3";
+    return "1:1";
+  })();
+  const queue = await fetch(space + "/gradio_api/call/infer", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({data:[
+      String(input.prompt || "").trim(),
+      42,
+      true,
+      ratio,
+      4,
+      Number(input.steps || 4),
+      false
+    ]})
+  });
+  const queuedText = await queue.text();
+  let queued = {};
+  try { queued = queuedText ? JSON.parse(queuedText) : {}; } catch {}
+  if (!queue.ok || !queued.event_id) throw new Error("ZeroGPU queue failed (" + queue.status + ")");
+  const response = await fetch(space + "/gradio_api/call/infer/" + encodeURIComponent(queued.event_id), {headers: {"Accept":"text/event-stream"}});
+  const raw = await response.text();
+  const blocks = raw.replace(/\r/g,"").split("\n\n").filter(Boolean);
+  for (const block of blocks) {
+    let event = null, dataText = "";
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      if (line.startsWith("data:")) dataText += line.slice(5).trim();
+    }
+    let data = null;
+    if (dataText) { try { data = JSON.parse(dataText); } catch { data = dataText; } }
+    if (event === "error") throw new Error(data == null ? "ZeroGPU returned event:error (quota or Space-side failure)." : String(data));
+    if (event === "complete") {
+      const findUrl = value => {
+        if (!value) return null;
+        if (typeof value === "string") return /^https?:\/\//i.test(value) ? value : null;
+        if (Array.isArray(value)) for (const item of value) { const u = findUrl(item); if (u) return u; }
+        if (typeof value === "object") {
+          if (value.url) return String(value.url);
+          for (const nested of Object.values(value)) { const u = findUrl(nested); if (u) return u; }
+        }
+        return null;
+      };
+      const imageUrl = findUrl(data);
+      if (!imageUrl) throw new Error("ZeroGPU completed without an image URL.");
+      return {ok:true, imageUrl, provider:"huggingface-zerogpu-browser", model:"Qwen/Qwen-Image", requestId:queued.event_id};
+    }
+  }
+  throw new Error("ZeroGPU ended without a terminal result.");
+}
+
 async function generateImage() {
   const button = document.getElementById("generateImageButton");
   const status = document.getElementById("imageGenerationStatus");
@@ -214,14 +274,25 @@ async function generateImage() {
   const ratio = document.getElementById("imageRatio").value;
   const size = ratio === "16:9" ? [1280,720] : ratio === "9:16" ? [720,1280] : ratio === "4:3" ? [1152,864] : [1024,1024];
   try {
-    const result = await postJson("/api/renderers/image", {
-      prompt,
-      width: size[0],
-      height: size[1],
-      steps: Number(document.getElementById("imageSteps").value || 12),
-      guidanceScale: 4
-    });
-    if (!result.ok || !result.imageUrl) throw new Error(result.reason || "لم تصل صورة");
+    let result;
+    try {
+      result = await postJson("/api/renderers/image", {
+        prompt,
+        width: size[0],
+        height: size[1],
+        steps: Number(document.getElementById("imageSteps").value || 12),
+        guidanceScale: 4
+      });
+      if (!result.ok || !result.imageUrl) throw new Error(result.reason || "لم تصل صورة");
+    } catch (serverError) {
+      status.textContent = "المسار السحابي غير متاح؛ نجرب ZeroGPU من المتصفح مباشرة...";
+      result = await browserZeroGpu({
+        prompt,
+        width: size[0],
+        height: size[1],
+        steps: 4
+      });
+    }
     status.className = "gallery-status success";
     status.textContent = "✅ تم توليد الصورة فعليًا.";
     const image = document.createElement("img");
