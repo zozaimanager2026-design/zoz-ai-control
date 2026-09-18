@@ -1,0 +1,1 @@
+const assert=require("assert"); const engine=require("./creative-engine"); assert.strictEqual(engine.policy().primary,"zoz-native-image-renderer"); assert.strictEqual(engine.policy().humanApprovalRequiredForFinance,true); assert.strictEqual(typeof engine.image,"function"); console.log("creative-engine.test.js: OK");
