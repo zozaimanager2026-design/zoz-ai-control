@@ -1,0 +1,60 @@
+name: Deploy ZOZ current main directly to Railway
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "renderers/**"
+      - "server.js"
+      - "business.js"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/deploy-zoz-current-main.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy-existing-service:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+      RAILWAY_PROJECT_ID: "5c56dcd6-bbf1-4ae7-8e1c-df521e22aa02"
+      RAILWAY_SERVICE_ID: "ae43c326-b01b-494e-9692-5308d309aec1"
+      RAILWAY_ENVIRONMENT: "production"
+    steps:
+      - name: Checkout exact main commit
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy current main to existing ZOZ service
+        run: |
+          set -euo pipefail
+          if [ -n "${RAILWAY_TOKEN}" ]; then
+            unset RAILWAY_API_TOKEN
+          elif [ -n "${RAILWAY_API_TOKEN}" ]; then
+            unset RAILWAY_TOKEN
+          else
+            echo "No Railway deployment token is configured in GitHub Actions secrets."
+            exit 2
+          fi
+
+          echo "Deploying Git commit:"
+          git rev-parse HEAD
+
+          railway up \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT}" \
+            --service "${RAILWAY_SERVICE_ID}" \
+            --ci \
+            --yes
+
+      - name: Verify deployment command completed
+        run: echo "Railway CLI upload/build command completed for the existing service."
