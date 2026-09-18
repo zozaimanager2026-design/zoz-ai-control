@@ -6,6 +6,7 @@ const business = require("./business");
 const { buildPeachTemplatePayload, normalizePeachWebhook, publicWebhookAudit } = require("./peach");
 const rendererRuntime = require("./renderers/runtime");
 const { renderImage, status: imageRendererStatus } = require("./renderers/native-image-adapter");
+const assetStore = require("./renderers/asset-store");
 const { youtubeConfigured, uploadYouTubeVideo, getYouTubeVideoStatus } = require("./youtube");
 
 dotenv.config();
@@ -113,7 +114,8 @@ app.get("/api/renderers/cost", (req, res) => res.json(rendererRuntime.status().c
 app.post("/api/renderers/estimate", (req, res) => { const body = req.body || {}; const durationMinutes = Math.max(0, Number(body.durationMinutes || 0)); const storageGb = Math.max(0, Number(body.storageGb || 0)); const storageDays = Math.max(0, Number(body.storageDays || 0)); const costMeter = require("./renderers/cost-meter"); return res.json(costMeter.estimateTotal({ gpuDurationMs: durationMinutes * 60000, storageGb, storageDays })); });
 app.get("/api/renderers/gpu", (req, res) => res.json(rendererRuntime.status().gpuLifecycle));
 app.get("/api/renderers/usage", (req, res) => res.json(rendererRuntime.status().renderUsage || []));
-app.get("/api/renderers/latest", (req, res) => res.json({ ok: true, images: state.generatedImages.slice(-20).reverse() }));
+app.get("/api/renderers/latest", (req, res) => res.json({ ok: true, images: state.generatedImages.slice(-20).reverse(), assetStore: assetStore.status() }));
+app.get("/api/assets/:id", async (req, res) => { try { const asset = await assetStore.getImage(req.params.id); if (!asset) return res.status(404).json({ ok: false, error: "asset_not_found" }); res.set("Content-Type", asset.mime_type); res.set("Content-Disposition", `inline; filename="${String(asset.filename || "zoz-image").replace(/["\\r\\n]/g, "")}"`); res.set("Cache-Control", "public, max-age=31536000, immutable"); return res.send(asset.bytes); } catch (error) { audit("asset_read_failed", { message: error.message }); return res.status(503).json({ ok: false, error: "asset_store_unavailable" }); } });
 app.post("/api/renderers/image", async (req, res) => { const denied = authorizeSecret(req, res, process.env.RENDERER_INTERNAL_SECRET || process.env.CRON_SECRET, "renderer_unauthorized"); if (denied) return; try { const result = await rendererRuntime.renderImage(req.body || {}); return res.status(result.ok ? 200 : (result.status === "waiting_for_renderer" ? 503 : 502)).json(result); } catch (error) { audit("native_image_render_error", { message: error.message }); return res.status(502).json({ ok: false, error: "native_image_render_failed" }); } });
 app.get("/api/connectors/verify", async (req, res) => { const ids = req.query.id ? String(req.query.id).split(",").filter(Boolean) : ["whatsapp"]; const results = []; for (const id of ids) results.push(await verifyConnector(id)); await saveState(); res.json({ ok: results.every((x) => x.verified), results, readiness: readiness() }); });
 
@@ -147,7 +149,7 @@ if (!process.env.VERCEL) app.listen(PORT, () => {
           num_inference_steps: 20
         });
         const imageUrl = result?.imageUrl || result?.url || result?.image?.url || null;
-        if (result?.ok && imageUrl) { const imageRecord = { id: "img_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8), createdAt: new Date().toISOString(), prompt, provider: result?.provider || result?.providerId || result?.metadata?.provider || null, status: result?.status || null, imageUrl, billing: result?.billing || null }; state.generatedImages.push(imageRecord); if (state.generatedImages.length > 50) state.generatedImages.splice(0, state.generatedImages.length - 50); await saveState(); }
+        if (result?.ok && imageUrl) { const imageRecord = { id: "img_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8), createdAt: new Date().toISOString(), prompt, provider: result?.provider || result?.providerId || result?.metadata?.provider || null, status: result?.status || null, imageUrl, billing: result?.billing || null, asset: null }; try { imageRecord.asset = await assetStore.persistImage({ id: imageRecord.id, imageUrl, prompt, provider: imageRecord.provider }); if (imageRecord.asset?.ok) imageRecord.imageUrl = imageRecord.asset.url; } catch (assetError) { audit("asset_persist_failed", { message: assetError.message, provider: imageRecord.provider }); imageRecord.asset = { ok: false, reason: assetError.message }; } state.generatedImages.push(imageRecord); if (state.generatedImages.length > 50) state.generatedImages.splice(0, state.generatedImages.length - 50); await saveState(); }
         console.log("[ZOZ_RENDERER_SMOKE_TEST] result", JSON.stringify({
           ok: result?.ok,
           status: result?.status || null,
