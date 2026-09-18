@@ -27,6 +27,8 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === "GET" && req.url === "/health") return json(res, 200, { ok: true, service: "zoz-independent-renderer", status: "ready" });
     if (req.method === "GET" && req.url === "/status") return json(res, 200, runtime.status());
+    if (req.method === "GET" && req.url === "/cost") return json(res, 200, runtime.status().costModel);
+    if (req.method === "GET" && req.url === "/gpu") return json(res, 200, runtime.status().gpuLifecycle);
     if (!authorized(req)) return json(res, 401, { ok: false, error: "unauthorized" });
     if (req.method === "GET" && req.url === "/native-image/health") {
       const result = await nativeImageRequest("/health");
