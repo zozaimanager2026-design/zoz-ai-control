@@ -18,6 +18,7 @@ const PEACH_API_URL = "https://app.trypeach.io/api/v1/events";
 const PEACH_TEMPLATE_ID = process.env.PEACH_TEMPLATE_ID || "";
 const WHATSAPP_SEND_SECRET = process.env.WHATSAPP_SEND_SECRET || "";
 app.use(express.json({ verify: (req, res, buffer) => { req.rawBody = Buffer.from(buffer); } }));
+app.use((req, res, next) => { const origin = req.headers.origin || ""; if (origin === "https://zoz-ai-control.vercel.app" || origin === "https://zoz-ai-control-v2.vercel.app" || /^https:\/\/zoz-ai-control-[a-z0-9-]+\.vercel\.app$/.test(origin)) { res.setHeader("Access-Control-Allow-Origin", origin); res.setHeader("Vary", "Origin"); res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS"); res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization"); } if (req.method === "OPTIONS") return res.sendStatus(204); next(); });
 app.use(express.static(path.join(__dirname, "public")));
 
 const KV_REST_API_URL = process.env.KV_REST_API_URL || process.env.ZOZ_KV_REST_API_URL;
