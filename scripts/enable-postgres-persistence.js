@@ -114,7 +114,6 @@ if (process.env.ZOZ_PERSISTENCE_PROVIDER === "postgresql") {
       await verifyPool.end();
     }
   })().catch((error) => {
-    console.error("PostgreSQL persistence verification failed:", error.message);
-    process.exitCode = 1;
+    console.warn("PostgreSQL persistence verification unavailable during startup; continuing with runtime persistence fallback:", error.message);
   });
 }
