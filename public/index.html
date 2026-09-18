@@ -100,6 +100,20 @@
   </section>
 
   <section>
+    <h2>🪄 مولد الصور الفعلي</h2>
+    <p class="small">التوليد يمر عبر Vercel إلى ZeroGPU المجاني، مع محاولة Qwen-Image أولًا ثم Qwen-Image-2512 عند الحاجة.</p>
+    <label>وصف الصورة</label>
+    <textarea id="imagePrompt" placeholder="مثال: تصميم إعلاني فاخر لجهاز تكييف منزلي بأسلوب ZOZ AI"></textarea>
+    <div class="form-grid">
+      <div><label>النسبة</label><select id="imageRatio"><option value="1:1">1:1</option><option value="16:9">16:9</option><option value="9:16">9:16</option><option value="4:3">4:3</option></select></div>
+      <div><label>الخطوات</label><input id="imageSteps" type="number" min="4" max="20" value="12"></div>
+    </div>
+    <button id="generateImageButton" onclick="generateImage()">توليد صورة فعلية الآن</button>
+    <div id="imageGenerationStatus" class="gallery-status pending">جاهز للتوليد.</div>
+    <div id="generatedImageResult"></div>
+  </section>
+
+  <section>
     <h2>🎨 مكتبة صور ZOZ AI</h2>
     <div id="galleryStatus" class="gallery-status pending">جاري فحص مكتبة الصور...</div>
     <div class="business-grid">
@@ -186,6 +200,49 @@ function renderCollections(leads, orders, opportunities) {
   document.getElementById("leadList").innerHTML = leads.length ? leads.map(l => `<div class="item"><strong>${escapeHtml(l.name || "بدون اسم")}</strong><br>${escapeHtml(l.request)}<br><span class="pill">${escapeHtml(l.stage)}</span> <span class="small">${escapeHtml(l.id)}</span></div>`).join("") : "لا يوجد عملاء محتملون.";
   document.getElementById("orderList").innerHTML = orders.length ? orders.map(o => `<div class="item"><strong>${escapeHtml(o.product)}</strong><br>السعر: ${escapeHtml(o.quotedPrice)} — العربون: ${escapeHtml(o.depositRequired)}<br><span class="pill">${escapeHtml(o.status)}</span></div>`).join("") : "لا توجد طلبات.";
   document.getElementById("opportunityList").innerHTML = opportunities.length ? opportunities.map(o => `<div class="item"><strong>${escapeHtml(o.title)}</strong><br>${escapeHtml(o.description)}<br><span class="pill">Score ${escapeHtml(o.score)}</span> <span class="pill">${escapeHtml(o.status)}</span></div>`).join("") : "لا توجد فرص.";
+}
+async function generateImage() {
+  const button = document.getElementById("generateImageButton");
+  const status = document.getElementById("imageGenerationStatus");
+  const box = document.getElementById("generatedImageResult");
+  const prompt = document.getElementById("imagePrompt").value.trim();
+  if (!prompt) { status.className = "gallery-status pending"; status.textContent = "اكتب وصف الصورة أولًا."; return; }
+  button.disabled = true;
+  status.className = "gallery-status pending";
+  status.textContent = "⏳ جاري التوليد الفعلي...";
+  box.innerHTML = "";
+  const ratio = document.getElementById("imageRatio").value;
+  const size = ratio === "16:9" ? [1280,720] : ratio === "9:16" ? [720,1280] : ratio === "4:3" ? [1152,864] : [1024,1024];
+  try {
+    const result = await postJson("/api/renderers/image", {
+      prompt,
+      width: size[0],
+      height: size[1],
+      steps: Number(document.getElementById("imageSteps").value || 12),
+      guidanceScale: 4
+    });
+    if (!result.ok || !result.imageUrl) throw new Error(result.reason || "لم تصل صورة");
+    status.className = "gallery-status success";
+    status.textContent = "✅ تم توليد الصورة فعليًا.";
+    const image = document.createElement("img");
+    image.src = result.imageUrl;
+    image.alt = "ZOZ AI generated image";
+    image.style.width = "100%";
+    image.style.maxWidth = "700px";
+    image.style.borderRadius = "12px";
+    const link = document.createElement("a");
+    link.href = result.imageUrl;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = "فتح الصورة بالحجم الكامل";
+    box.append(image, document.createElement("br"), link);
+    loadGeneratedImages();
+  } catch (error) {
+    status.className = "gallery-status pending";
+    status.textContent = "❌ فشل التوليد: " + error.message;
+  } finally {
+    button.disabled = false;
+  }
 }
 async function loadGeneratedImages() {
   const status = document.getElementById("galleryStatus");
