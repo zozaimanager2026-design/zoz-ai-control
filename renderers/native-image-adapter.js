@@ -151,4 +151,4 @@ function status() {
 }
 
 module.exports = { renderImage, NATIVE_URL, provider, status };
-// Railway source-refresh marker: this file is intentionally touched to trigger deployment of current main.
+// Railway source-refresh marker: force production sync to current main after renderer validation (2026-09-19).
