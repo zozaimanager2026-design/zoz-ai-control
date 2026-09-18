@@ -3,6 +3,19 @@
   "framework": null,
   "buildCommand": "echo ZOZ static mobile shell",
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://zoz-ai-control-production.up.railway.app/api/:path*" }
-  ]
+    {
+      "source": "/api/renderers/image",
+      "destination": "/api/zoz-image"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://zoz-ai-control-production.up.railway.app/api/:path*"
+    }
+  ],
+  "functions": {
+    "api/zoz-image.js": {
+      "maxDuration": 300,
+      "memory": 1024
+    }
+  }
 }
