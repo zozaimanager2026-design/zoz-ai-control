@@ -12,7 +12,7 @@ function config() {
     enabled: Boolean(process.env.ZOZ_HF_SPACE_URL),
     spaceUrl: String(process.env.ZOZ_HF_SPACE_URL || "").replace(/\/$/, ""),
     apiName: String(process.env.ZOZ_HF_API_NAME || "infer"),
-    profile: String(process.env.ZOZ_HF_PROFILE || "qwen-image"),
+    profile: String(process.env.ZOZ_HF_PROFILE || "qwen-image-2512"),
     model: String(process.env.ZOZ_HF_MODEL || "Qwen/Qwen-Image-2512"),
     timeoutMs: Number(process.env.ZOZ_HF_TIMEOUT_MS || 180000),
     tokenConfigured: Boolean(process.env.HF_TOKEN),
