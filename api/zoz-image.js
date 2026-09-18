@@ -200,3 +200,5 @@ async function handler(req, res) {
 
 handler.config = config;
 module.exports = handler;
+
+// Vercel preview live-image probe marker
