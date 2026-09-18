@@ -27,7 +27,7 @@
     .item { background: #f8fafc; padding: 12px; border-radius: 8px; margin: 8px 0; }
     .success { color: #166534; font-weight: bold; }
     .danger { color: #991b1b; font-weight: bold; }
-    .pill { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #e2e8f0; font-size: 12px; }
+    .image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }\n    .image-card { background: #f8fafc; padding: 10px; border-radius: 12px; }\n    .image-card img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 10px; display: block; }\n    .image-card a { display: inline-block; margin-top: 8px; }\n    .pill { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #e2e8f0; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -168,10 +168,10 @@ function renderCollections(leads, orders, opportunities) {
   document.getElementById("orderList").innerHTML = orders.length ? orders.map(o => `<div class="item"><strong>${escapeHtml(o.product)}</strong><br>السعر: ${escapeHtml(o.quotedPrice)} — العربون: ${escapeHtml(o.depositRequired)}<br><span class="pill">${escapeHtml(o.status)}</span></div>`).join("") : "لا توجد طلبات.";
   document.getElementById("opportunityList").innerHTML = opportunities.length ? opportunities.map(o => `<div class="item"><strong>${escapeHtml(o.title)}</strong><br>${escapeHtml(o.description)}<br><span class="pill">Score ${escapeHtml(o.score)}</span> <span class="pill">${escapeHtml(o.status)}</span></div>`).join("") : "لا توجد فرص.";
 }
-async function refreshDashboard() {
+async function loadGeneratedImages() {\n  try {\n    const data = await getJson("/api/renderers/latest");\n    const images = Array.isArray(data.images) ? data.images : [];\n    const box = document.getElementById("generatedImages");\n    box.innerHTML = "";\n    if (!images.length) { box.textContent = "لا توجد صور مولدة بعد."; return; }\n    images.forEach(img => {\n      const card = document.createElement("div"); card.className = "image-card";\n      const image = document.createElement("img"); image.src = img.imageUrl; image.alt = "ZOZ AI generated image"; image.loading = "lazy";\n      const meta = document.createElement("div"); meta.className = "small"; meta.textContent = (img.provider || "ZOZ Renderer") + " — " + (img.createdAt || "");\n      const link = document.createElement("a"); link.href = img.imageUrl; link.target = "_blank"; link.rel = "noopener"; link.textContent = "فتح الصورة بالحجم الكامل";\n      card.append(image, meta, link); box.appendChild(card);\n    });\n  } catch (error) { document.getElementById("generatedImages").textContent = "تعذر تحميل معرض الصور الآن."; }\n}\nasync function refreshDashboard() {
   const [state, connectors, jobs, readiness, summary, leads, orders, opportunities] = await Promise.all([getJson("/api/state"), getJson("/api/connectors/status"), getJson("/api/jobs"), getJson("/api/readiness"), getJson("/api/business/summary"), getJson("/api/business/leads"), getJson("/api/business/orders"), getJson("/api/business/opportunities")]);
   document.getElementById("status").textContent = state.status === "running" ? "يعمل" : state.status; document.getElementById("jobs").textContent = jobs.length; renderConnectors(connectors); renderReadiness(readiness); renderBusiness(summary); renderCollections(leads, orders, opportunities);
-  document.getElementById("jobList").innerHTML = jobs.length ? jobs.map(job => `<div class="card"><strong>${escapeHtml(job.title)}</strong><p>${escapeHtml(job.description)}</p><small>الحالة: ${escapeHtml(job.status)}</small></div>`).join("") : "لا توجد مهام حاليًا.";
+  loadGeneratedImages();\n  document.getElementById("jobList").innerHTML = jobs.length ? jobs.map(job => `<div class="card"><strong>${escapeHtml(job.title)}</strong><p>${escapeHtml(job.description)}</p><small>الحالة: ${escapeHtml(job.status)}</small></div>`).join("") : "لا توجد مهام حاليًا.";
 }
 async function checkCycleStatus() {
   const box = document.getElementById("cycleResult");
