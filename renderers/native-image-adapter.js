@@ -4,6 +4,7 @@
 const NATIVE_URL = String(process.env.ZOZ_NATIVE_IMAGE_RENDERER_URL || "http://127.0.0.1:8100").replace(/\/$/, "");
 const SECRET = process.env.ZOZ_NATIVE_IMAGE_RENDERER_SECRET || process.env.RENDERER_INTERNAL_SECRET || "";
 const { generateViaZeroGPU } = require("./huggingface-zerogpu");
+const runpod = require("./runpod-serverless-image-adapter");
 
 async function requestNative(payload) {
   try {
@@ -25,6 +26,11 @@ async function renderImage(input = {}) {
   const payload = { prompt, negative_prompt: input.negativePrompt || "", width: input.width || 1024, height: input.height || 1024, steps: input.steps || 28, guidance_scale: input.guidanceScale ?? 4, seed: input.seed };
   const native = await requestNative(payload);
   if (native.ok) return native;
+  if (String(process.env.ZOZ_IMAGE_PROVIDER || "").toLowerCase() === "runpod-serverless" && runpod.configured()) {
+    const remote = await runpod.generate(input);
+    if (remote.ok) return remote;
+    return { ok: false, status: "failed", reason: "runpod_native_render_failed", detail: remote.reason, provider: "runpod" };
+  }
   if (String(process.env.ZOZ_ALLOW_FREE_FALLBACK || "").toLowerCase() === "true" && process.env.ZOZ_HF_SPACE_URL) {
     const free = await generateViaZeroGPU(input);
     if (free.ok) return free;
