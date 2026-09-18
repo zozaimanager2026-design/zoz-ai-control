@@ -245,7 +245,7 @@ async function pollResult(spaceUrl, eventId, timeoutMs) {
       lastEvent = event || lastEvent;
       console.log("[ZOZ_HF_ZERO_GPU] event", JSON.stringify({ eventId, event: event || null }));
       if (event === "error" || data === "error") {
-        streamError = data;
+        streamError = { event: event || "error", data };
         return;
       }
       if (event === "complete") {
@@ -261,7 +261,15 @@ async function pollResult(spaceUrl, eventId, timeoutMs) {
     });
 
     if (streamError) {
-      return { ok: false, status: "failed", reason: "zerogpu_generation_error", httpStatus: lastStatus, detail: String(streamError).slice(0, 500) };
+      return {
+        ok: false,
+        status: "failed",
+        reason: "zerogpu_generation_error",
+        httpStatus: lastStatus,
+        event: streamError.event || "error",
+        detail: streamError.data == null ? "ZeroGPU returned event:error with no diagnostic payload (data:null)." : String(streamError.data).slice(0, 500),
+        quotaIndeterminate: true
+      };
     }
 
     if (completed) {
@@ -289,6 +297,36 @@ async function pollResult(spaceUrl, eventId, timeoutMs) {
   return { ok: false, status: "failed", reason: "zerogpu_timeout", httpStatus: lastStatus, event: lastEvent };
 }
 
+async function generateAgainstSpace(input, overrides = {}) {
+  const cfg = { ...config(), ...overrides };
+  const queued = await postQueue(cfg.spaceUrl, cfg.apiName, buildData({ ...input, hfProfileOverride: cfg.profile }));
+  if (queued.response.status < 200 || queued.response.status >= 300 || !queued.body.event_id) {
+    return {
+      ok: false,
+      status: "failed",
+      reason: "zerogpu_enqueue_failed",
+      httpStatus: queued.response.status,
+      detail: queued.body?.error || null,
+      spaceUrl: cfg.spaceUrl
+    };
+  }
+  const result = await pollResultForSpace(cfg.spaceUrl, cfg.apiName, queued.body.event_id, cfg.timeoutMs);
+  if (result.ok) result.requestId = queued.body.event_id;
+  result.spaceUrl = cfg.spaceUrl;
+  return result;
+}
+
+async function pollResultForSpace(spaceUrl, apiName, eventId, timeoutMs) {
+  const previous = process.env.ZOZ_HF_API_NAME;
+  process.env.ZOZ_HF_API_NAME = apiName;
+  try {
+    return await pollResult(spaceUrl, eventId, timeoutMs);
+  } finally {
+    if (previous == null) delete process.env.ZOZ_HF_API_NAME;
+    else process.env.ZOZ_HF_API_NAME = previous;
+  }
+}
+
 async function generateViaZeroGPU(input = {}) {
   const cfg = config();
   if (!cfg.spaceUrl) return { ok: false, status: "blocked", reason: "ZOZ_HF_SPACE_URL_missing" };
@@ -297,20 +335,43 @@ async function generateViaZeroGPU(input = {}) {
   if (!prompt) return { ok: false, status: "blocked", reason: "image_prompt_required" };
 
   try {
-    const queued = await postQueue(cfg.spaceUrl, cfg.apiName, buildData(input));
-    if (queued.response.status < 200 || queued.response.status >= 300 || !queued.body.event_id) {
+    const primary = await generateAgainstSpace(input, cfg);
+    if (primary.ok) return primary;
+
+    // Free fallback: the original Qwen-Image Space runs on ZeroGPU large (1× quota),
+    // while Qwen-Image-2512 uses xlarge (2× quota). Try it before declaring the
+    // free path unavailable, without changing ZOZ's financial approval rules.
+    const primaryIs2512 = cfg.profile === "qwen-image-2512" || /Qwen-Image-2512/i.test(cfg.model);
+    if (primaryIs2512) {
+      const fallback = await generateAgainstSpace(input, {
+        spaceUrl: "https://qwen-qwen-image.hf.space",
+        apiName: "infer",
+        profile: "qwen-image",
+        model: "Qwen/Qwen-Image"
+      });
+      if (fallback.ok) return { ...fallback, fallbackFrom: "qwen-image-2512" };
       return {
         ok: false,
         status: "failed",
-        reason: "zerogpu_enqueue_failed",
-        httpStatus: queued.response.status,
-        detail: queued.body?.error || null
+        reason: "all_free_renderers_failed",
+        primary: {
+          reason: primary.reason,
+          event: primary.event || null,
+          detail: primary.detail || null,
+          httpStatus: primary.httpStatus || null,
+          spaceUrl: primary.spaceUrl || cfg.spaceUrl
+        },
+        fallback: {
+          reason: fallback.reason,
+          event: fallback.event || null,
+          detail: fallback.detail || null,
+          httpStatus: fallback.httpStatus || null,
+          spaceUrl: fallback.spaceUrl
+        }
       };
     }
 
-    const result = await pollResult(cfg.spaceUrl, queued.body.event_id, cfg.timeoutMs);
-    if (result.ok) result.requestId = queued.body.event_id;
-    return result;
+    return primary;
   } catch (error) {
     if (error?.name === "AbortError" || /timeout/i.test(String(error?.message || ""))) {
       return { ok: false, status: "failed", reason: "zerogpu_timeout", detail: error.message };
