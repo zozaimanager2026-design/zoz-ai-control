@@ -33,7 +33,7 @@ function clampInt(value, fallback, min, max) {
 }
 
 function buildData(input = {}) {
-  const profile = String(process.env.ZOZ_HF_PROFILE || "qwen-image-2512").toLowerCase();
+  const profile = String(input.hfProfileOverride || process.env.ZOZ_HF_PROFILE || "qwen-image-2512").toLowerCase();
   const prompt = String(input.prompt || input.description || input.title || "").trim();
   const negative = String(input.negativePrompt || "");
   const width = clampInt(input.width, 1024, 256, 1536);
@@ -216,14 +216,14 @@ async function readSseEvents(response, onEvent) {
   }
 }
 
-async function pollResult(spaceUrl, eventId, timeoutMs) {
+async function pollResult(spaceUrl, eventId, timeoutMs, apiName = process.env.ZOZ_HF_API_NAME || "infer", modelName = process.env.ZOZ_HF_MODEL || "Qwen/Qwen-Image-2512") {
   const deadline = Date.now() + timeoutMs;
   let lastStatus = null;
   let lastEvent = null;
 
   while (Date.now() < deadline) {
     const response = await fetch(
-      spaceUrl + "/gradio_api/call/" + encodeURIComponent(process.env.ZOZ_HF_API_NAME || "infer") + "/" + encodeURIComponent(eventId),
+      spaceUrl + "/gradio_api/call/" + encodeURIComponent(apiName) + "/" + encodeURIComponent(eventId),
       {
         method: "GET",
         headers: { Accept: "text/event-stream", ...headers() },
@@ -279,7 +279,7 @@ async function pollResult(spaceUrl, eventId, timeoutMs) {
           ok: true,
           executionMode: "huggingface-zerogpu",
           renderer: "zoz-huggingface-zerogpu",
-          model: process.env.ZOZ_HF_MODEL || "Qwen/Qwen-Image-2512",
+          model: modelName,
           device: "cuda",
           imageUrl: image.url || null,
           path: image.path || null,
@@ -310,21 +310,10 @@ async function generateAgainstSpace(input, overrides = {}) {
       spaceUrl: cfg.spaceUrl
     };
   }
-  const result = await pollResultForSpace(cfg.spaceUrl, cfg.apiName, queued.body.event_id, cfg.timeoutMs);
+  const result = await pollResult(cfg.spaceUrl, queued.body.event_id, cfg.timeoutMs, cfg.apiName, cfg.model);
   if (result.ok) result.requestId = queued.body.event_id;
   result.spaceUrl = cfg.spaceUrl;
   return result;
-}
-
-async function pollResultForSpace(spaceUrl, apiName, eventId, timeoutMs) {
-  const previous = process.env.ZOZ_HF_API_NAME;
-  process.env.ZOZ_HF_API_NAME = apiName;
-  try {
-    return await pollResult(spaceUrl, eventId, timeoutMs);
-  } finally {
-    if (previous == null) delete process.env.ZOZ_HF_API_NAME;
-    else process.env.ZOZ_HF_API_NAME = previous;
-  }
 }
 
 async function generateViaZeroGPU(input = {}) {
