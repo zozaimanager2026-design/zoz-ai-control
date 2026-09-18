@@ -131,4 +131,31 @@ app.post("/api/automation/cycle", async (req, res) => { const denied = authorize
 app.get("/{*splat}", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 loadState().then(() => audit("system_started", { persistence: persistence.enabled, persistenceProvider: persistence.provider, financialExternalExecution: false, peachOutbound: peachConfigured(), peachWebhook: true, metaWebhook: true })).catch((error) => audit("system_start_error", { message: error.message }));
 module.exports = app;
-if (!process.env.VERCEL) app.listen(PORT, () => console.log(`${ZOZ_NAME} running on port ${PORT}`));
+if (!process.env.VERCEL) app.listen(PORT, () => {
+  console.log(ZOZ_NAME + " running on port " + PORT);
+  if (process.env.ZOZ_RENDERER_SMOKE_TEST === "true") {
+    setTimeout(async () => {
+      const prompt = "A clean futuristic ZOZ AI business operating system dashboard, premium technology branding, square composition";
+      console.log("[ZOZ_RENDERER_SMOKE_TEST] started", JSON.stringify({ provider: process.env.ZOZ_IMAGE_PROVIDER || "default", prompt }));
+      try {
+        const result = await rendererRuntime.renderImage({
+          prompt,
+          negative_prompt: "blurry, low quality, distorted text, watermark",
+          width: 512,
+          height: 512,
+          num_inference_steps: 20
+        });
+        console.log("[ZOZ_RENDERER_SMOKE_TEST] result", JSON.stringify({
+          ok: result?.ok,
+          status: result?.status || null,
+          reason: result?.reason || null,
+          provider: result?.provider || result?.providerId || result?.metadata?.provider || null,
+          imageUrl: result?.imageUrl || result?.url || result?.image?.url || null,
+          billing: result?.billing || null
+        }));
+      } catch (error) {
+        console.error("[ZOZ_RENDERER_SMOKE_TEST] error", JSON.stringify({ message: error.message }));
+      }
+    }, 5000);
+  }
+});
