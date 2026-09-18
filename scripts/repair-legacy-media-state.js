@@ -33,8 +33,7 @@ const RENDERER_SCHEMA_VERSION = 5;
   }
   console.log(`[ZOZ media state repair] renderer v${RENDERER_SCHEMA_VERSION} active; legacy media states migrated: ${repaired}`);
 })().catch((error) => {
-  console.error("[ZOZ media state repair] failed", error?.message || error);
-  process.exitCode = 1;
+  console.warn("[ZOZ media state repair] unavailable during startup; continuing:", error?.message || error);
 });
 
 // v5 migration is intentionally idempotent so restarts cannot regress media schema.
