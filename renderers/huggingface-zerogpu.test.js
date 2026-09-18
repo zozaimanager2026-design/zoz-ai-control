@@ -42,3 +42,26 @@ generateViaZeroGPU({ prompt: "ZOZ integration test", seed: 123 })
   })
   .finally(() => { global.fetch = previousFetch; })
   .catch(error => { global.fetch = previousFetch; throw error; });
+
+const previousFetch2 = global.fetch;
+let errorPollCalls = 0;
+global.fetch = async (url, options = {}) => {
+  errorPollCalls += 1;
+  if (String(url).endsWith("/gradio_api/call/infer")) {
+    return { status: 200, text: async () => JSON.stringify({ event_id: "evt-error" }) };
+  }
+  return {
+    status: 200,
+    text: async () => "event: error\ndata: null\n\n"
+  };
+};
+generateViaZeroGPU({ prompt: "ZOZ error event test", seed: 42 })
+  .then(result => {
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.reason, "zerogpu_generation_error");
+    assert.strictEqual(result.event, "error");
+    assert.strictEqual(result.quotaIndeterminate, true);
+    assert.strictEqual(errorPollCalls, 2, "error event must terminate the same request without retrying");
+  })
+  .finally(() => { global.fetch = previousFetch2; })
+  .catch(error => { global.fetch = previousFetch2; throw error; });
