@@ -109,7 +109,8 @@ async function renderImage(input = {}) {
         status: "approval_required",
         reason: "paid_renderer_requires_human_approval",
         provider: "runpod",
-        freeRendererReason: native.reason,\n        cloudflareReason: cloudflare.reason,
+        freeRendererReason: native.reason,
+        cloudflareReason: cloudflare.reason,
         policy: "free_first_then_pay_per_heavy_job"
       };
     }
@@ -142,7 +143,9 @@ function status() {
     executionPolicy: "free_first_then_pay_per_heavy_job",
     paidExecutionRequiresHumanApproval: paidProvider(selected),
     huggingface: hfConfig(),
-    runpodConfigured: runpod.configured(),\n    cloudflareConfigured: Boolean(CLOUDFLARE_AI_URL),\n    cloudflareAiUrl: CLOUDFLARE_AI_URL || null,
+    runpodConfigured: runpod.configured(),
+    cloudflareConfigured: Boolean(CLOUDFLARE_AI_URL),
+    cloudflareAiUrl: CLOUDFLARE_AI_URL || null,
     nativeUrl: NATIVE_URL
   };
 }
