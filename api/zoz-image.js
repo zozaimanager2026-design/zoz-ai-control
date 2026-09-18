@@ -153,6 +153,15 @@ async function runSpace(space, input) {
 }
 
 async function handler(req, res) {
+  if (req.method === "GET") {
+    if (process.env.VERCEL_ENV === "production") {
+      return res.status(404).json({ ok: false, error: "preview_test_only" });
+    }
+    const prompt = String(req.query?.prompt || "ZOZ AI premium futuristic business operating system poster, clean technology branding");
+    const result = await runSpace(SPACES[0], { prompt, width: 1024, height: 1024, steps: 4 });
+    return res.status(result.ok ? 200 : 502).json(result);
+  }
+
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ ok: false, error: "method_not_allowed" });
