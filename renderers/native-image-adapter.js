@@ -4,7 +4,7 @@ const NATIVE_URL = String(process.env.ZOZ_NATIVE_IMAGE_RENDERER_URL || "http://1
 const SECRET = process.env.ZOZ_NATIVE_IMAGE_RENDERER_SECRET || process.env.RENDERER_INTERNAL_SECRET || "";
 const { generateViaZeroGPU, config: hfConfig } = require("./huggingface-zerogpu");
 const runpod = require("./runpod-serverless-image-adapter");
-const CLOUDFLARE_AI_URL = String(process.env.ZOZ_CLOUDFLARE_AI_URL || "").replace(/\\/$/, "");
+const CLOUDFLARE_AI_URL = String(process.env.ZOZ_CLOUDFLARE_AI_URL || "").replace(/\/$/, "");
 
 const provider = () => String(process.env.ZOZ_IMAGE_PROVIDER || "native").trim().toLowerCase();
 const paidProvider = selected => selected === "runpod-serverless";
