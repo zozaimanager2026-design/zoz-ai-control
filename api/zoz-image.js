@@ -13,9 +13,7 @@ const SPACES = [
   },
 ];
 
-export const config = {
-  maxDuration: 300,
-};
+const config = { maxDuration: 300 };
 
 function clampInt(value, fallback, min, max) {
   const n = Number(value);
@@ -154,7 +152,7 @@ async function runSpace(space, input) {
   }
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ ok: false, error: "method_not_allowed" });
@@ -190,3 +188,6 @@ export default async function handler(req, res) {
     quotaNote: "ZeroGPU quotas are provider-side; 429 is treated as quota/rate limit.",
   });
 }
+
+handler.config = config;
+module.exports = handler;
