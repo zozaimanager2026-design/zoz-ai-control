@@ -1,7 +1,4 @@
 // ZOZ AI Independent Renderer Runtime
-// Runs the reusable digital-work library without requiring ChatGPT, Vercel, Railway,
-// or a specific external application to remain available.
-// External services are optional adapters; the renderer core remains local and testable.
 const fs = require("fs");
 const path = require("path");
 const { RENDERERS, resolveRenderer, buildRendererJob, getRenderPolicy } = require("./index");
@@ -86,21 +83,13 @@ async function executeWithAccounting(job, adapter) {
   const startedAt = lifecycle.startedAt ? Date.parse(lifecycle.startedAt) : usageStartedAt;
   let value;
   let adapterError = null;
-  try {
-    value = await adapter(job.input);
-  } catch (error) {
-    adapterError = error;
-    value = { ok: false, status: "failed", reason: "renderer_execution_error", detail: error.message };
-  }
+  try { value = await adapter(job.input); }
+  catch (error) { adapterError = error; value = { ok: false, status: "failed", reason: "renderer_execution_error", detail: error.message }; }
   const stoppedAt = Date.now();
   const stopped = lifecycle.started ? await gpuLifecycle.releaseForJob(job) : { ok: true, mode: lifecycle.mode, stopped: false, reason: "gpu_was_not_started_by_zoz" };
   const durationMs = Math.max(0, stoppedAt - startedAt);
   const billing = costMeter.estimateTotal({ gpuDurationMs: durationMs });
-  const result = {
-    ...(value || { ok: false, status: "failed", reason: "empty_renderer_result" }),
-    gpuLifecycle: { start: lifecycle, stop: stopped },
-    billing: { ...billing, durationSeconds: Number((durationMs / 1000).toFixed(2)), mode: lifecycle.mode }
-  };
+  const result = { ...(value || { ok: false, status: "failed", reason: "empty_renderer_result" }), gpuLifecycle: { start: lifecycle, stop: stopped }, billing: { ...billing, durationSeconds: Number((durationMs / 1000).toFixed(2)), mode: lifecycle.mode } };
   if (adapterError) result.error = adapterError.message;
   return result;
 }
@@ -122,12 +111,7 @@ function execute(job, adapters = {}) {
     if (value?.billing) appendUsage(current, { jobId: job.jobId, rendererId: renderer.id, createdAt: runningAt, ...value.billing });
     current.completed += value?.ok === false ? 0 : 1;
     if (value?.ok === false) current.failed += 1;
-    current.jobs = current.jobs.map(item => item.jobId === job.jobId ? {
-      ...item,
-      status: value?.ok === false ? "failed" : "completed",
-      result: value,
-      completedAt: new Date().toISOString()
-    } : item);
+    current.jobs = current.jobs.map(item => item.jobId === job.jobId ? { ...item, status: value?.ok === false ? "failed" : "completed", result: value, completedAt: new Date().toISOString() } : item);
     saveState(current);
     return value;
   });
@@ -147,20 +131,13 @@ async function renderImage(input = {}) {
   };
   const result = await executeWithAccounting(job, renderNativeImage);
   const state = loadState();
-  if (result?.billing) appendUsage(state, { jobId: job.jobId, rendererId: "video_media_renderer", createdAt: new Date().toISOString(), ...result.billing });
+  if (result?.billing) appendUsage(state, { jobId: job.jobId, rendererId: "image_media_renderer", createdAt: new Date().toISOString(), ...result.billing });
   saveState(state);
   return result;
 }
 function recordImprovement(failure) {
   const improvements = readJson(IMPROVEMENTS_FILE, []);
-  const item = {
-    id: `imp-${Date.now()}`,
-    source: failure?.reason || "unknown_failure",
-    suggestion: failure?.suggestion || "inspect failed renderer job and add a reusable template/test",
-    status: "proposed",
-    createdAt: new Date().toISOString(),
-    activation: "requires_test_and_quality_gate"
-  };
+  const item = { id: `imp-${Date.now()}`, source: failure?.reason || "unknown_failure", suggestion: failure?.suggestion || "inspect failed renderer job and add a reusable template/test", status: "proposed", createdAt: new Date().toISOString(), activation: "requires_test_and_quality_gate" };
   improvements.push(item);
   writeJson(IMPROVEMENTS_FILE, improvements.slice(-500));
   const state = loadState();
@@ -170,15 +147,6 @@ function recordImprovement(failure) {
 }
 function status() {
   const state = loadState();
-  return {
-    ...state,
-    library: inspectLibrary(),
-    gpuLifecycle: gpuLifecycle.status(),
-    costModel: costMeter.config(),
-    selfDevelopment: { ...state.selfDevelopment }
-  };
+  return { ...state, library: inspectLibrary(), gpuLifecycle: gpuLifecycle.status(), costModel: costMeter.config(), selfDevelopment: { ...state.selfDevelopment } };
 }
-module.exports = {
-  createRuntimeState, inspectLibrary, queue, execute, executeQueued, renderImage, recordImprovement, status,
-  STATE_FILE, IMPROVEMENTS_FILE
-};
+module.exports = { createRuntimeState, inspectLibrary, queue, execute, executeQueued, renderImage, recordImprovement, status, STATE_FILE, IMPROVEMENTS_FILE };
