@@ -4,6 +4,7 @@ const NATIVE_URL = String(process.env.ZOZ_NATIVE_IMAGE_RENDERER_URL || "http://1
 const SECRET = process.env.ZOZ_NATIVE_IMAGE_RENDERER_SECRET || process.env.RENDERER_INTERNAL_SECRET || "";
 const { generateViaZeroGPU, config: hfConfig } = require("./huggingface-zerogpu");
 const runpod = require("./runpod-serverless-image-adapter");
+const CLOUDFLARE_AI_URL = String(process.env.ZOZ_CLOUDFLARE_AI_URL || "").replace(/\\/$/, "");
 
 const provider = () => String(process.env.ZOZ_IMAGE_PROVIDER || "native").trim().toLowerCase();
 const paidProvider = selected => selected === "runpod-serverless";
@@ -50,6 +51,35 @@ function payloadForNative(input) {
   };
 }
 
+async function requestCloudflare(input) {
+  if (!CLOUDFLARE_AI_URL) return { ok: false, status: "unavailable", reason: "cloudflare_ai_url_not_configured" };
+  try {
+    const response = await fetch(CLOUDFLARE_AI_URL + "/api/ai/image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt: input.prompt || input.description || input.title || "",
+        steps: input.steps || input.num_inference_steps || 4,
+        seed: input.seed
+      })
+    });
+    const text = await response.text();
+    let body;
+    try { body = text ? JSON.parse(text) : {}; } catch { body = { text: text.slice(0, 500) }; }
+    if (!response.ok || !body.imageBase64) return { ok: false, status: "failed", reason: body.error || "cloudflare_ai_generation_failed", detail: body.detail || null, httpStatus: response.status };
+    return {
+      ok: true,
+      executionMode: "cloudflare-workers-ai",
+      provider: "cloudflare-workers-ai",
+      model: body.model,
+      imageBase64: body.imageBase64,
+      mimeType: body.mimeType || "image/jpeg"
+    };
+  } catch (error) {
+    return { ok: false, status: "unavailable", reason: "cloudflare_ai_unreachable", detail: error.message };
+  }
+}
+
 async function renderImage(input = {}) {
   const prompt = String(input.prompt || input.description || input.title || "").trim();
   if (!prompt) return { ok: false, status: "blocked", reason: "image_prompt_required" };
@@ -66,9 +96,11 @@ async function renderImage(input = {}) {
     return { ok: false, status: "failed", reason: "free_renderer_failed", freeReason: free.reason, nativeReason: native.reason };
   }
 
-  // Native ZOZ renderer is always attempted before any paid provider.
+  // ZOZ-native renderer is attempted first; Cloudflare Workers AI is the free cloud fallback.
   const native = await requestNative(payloadForNative(input));
   if (native.ok) return native;
+  const cloudflare = await requestCloudflare(input);
+  if (cloudflare.ok) return cloudflare;
 
   if (selected === "runpod-serverless") {
     if (!paidApproved) {
@@ -77,7 +109,7 @@ async function renderImage(input = {}) {
         status: "approval_required",
         reason: "paid_renderer_requires_human_approval",
         provider: "runpod",
-        freeRendererReason: native.reason,
+        freeRendererReason: native.reason,\n        cloudflareReason: cloudflare.reason,
         policy: "free_first_then_pay_per_heavy_job"
       };
     }
@@ -110,7 +142,7 @@ function status() {
     executionPolicy: "free_first_then_pay_per_heavy_job",
     paidExecutionRequiresHumanApproval: paidProvider(selected),
     huggingface: hfConfig(),
-    runpodConfigured: runpod.configured(),
+    runpodConfigured: runpod.configured(),\n    cloudflareConfigured: Boolean(CLOUDFLARE_AI_URL),\n    cloudflareAiUrl: CLOUDFLARE_AI_URL || null,
     nativeUrl: NATIVE_URL
   };
 }
