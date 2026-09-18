@@ -167,9 +167,59 @@ function extractSeed(value) {
   return null;
 }
 
+async function readSseEvents(response, onEvent) {
+  if (!response.body) {
+    const data = await response.text();
+    const payload = extractEventPayload(data);
+    if (payload !== null) await onEvent({ event: null, data: payload });
+    return;
+  }
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+  let buffer = "";
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    buffer += decoder.decode(chunk.value, { stream: true });
+    let boundary;
+    while ((boundary = buffer.indexOf("\n\n")) >= 0) {
+      const block = buffer.slice(0, boundary).replace(/\r/g, "");
+      buffer = buffer.slice(boundary + 2);
+      if (!block.trim()) continue;
+      let event = null;
+      let dataText = "";
+      for (const line of block.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) dataText += line.slice(5).trim();
+      }
+      let data = null;
+      if (dataText) {
+        try { data = JSON.parse(dataText); } catch { data = dataText; }
+      }
+      await onEvent({ event, data });
+      if (event === "complete" || event === "error") return;
+    }
+  }
+  const tail = buffer.replace(/\r/g, "").trim();
+  if (tail) {
+    let event = null;
+    let dataText = "";
+    for (const line of tail.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) dataText += line.slice(5).trim();
+    }
+    let data = null;
+    if (dataText) {
+      try { data = JSON.parse(dataText); } catch { data = dataText; }
+    }
+    await onEvent({ event, data });
+  }
+}
+
 async function pollResult(spaceUrl, eventId, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   let lastStatus = null;
+  let lastEvent = null;
 
   while (Date.now() < deadline) {
     const response = await fetch(
@@ -177,38 +227,66 @@ async function pollResult(spaceUrl, eventId, timeoutMs) {
       {
         method: "GET",
         headers: { Accept: "text/event-stream", ...headers() },
-        // Qwen-Image-2512 reserves up to 120s of ZeroGPU execution.\n        // Do not abort the SSE request at 30s; that was masking a valid queued job as a timeout.\n        signal: timeoutSignal(Math.min(245000, Math.max(10000, deadline - Date.now())))
+        signal: timeoutSignal(Math.min(245000, Math.max(10000, deadline - Date.now())))
       }
     );
     lastStatus = response.status;
-    const data = await response.text();
-    console.log("[ZOZ_HF_ZERO_GPU] poll", JSON.stringify({ eventId, httpStatus: response.status, bytes: data.length }));
-    const payload = extractEventPayload(data);
+    console.log("[ZOZ_HF_ZERO_GPU] stream", JSON.stringify({ eventId, httpStatus: response.status }));
 
-    if (payload === "error" || payload?.type === "error") {
-      return { ok: false, status: "failed", reason: "zerogpu_generation_error", httpStatus: response.status };
+    if (!response.ok) {
+      const body = await response.text();
+      return { ok: false, status: "failed", reason: "zerogpu_result_http_error", httpStatus: response.status, detail: body.slice(0, 500) };
     }
 
-    const image = findImageValue(payload);
-    if (image) {
-      return {
-        ok: true,
-        executionMode: "huggingface-zerogpu",
-        renderer: "zoz-huggingface-zerogpu",
-        model: process.env.ZOZ_HF_MODEL || "Qwen/Qwen-Image-2512",
-        device: "cuda",
-        imageUrl: image.url || null,
-        path: image.path || null,
-        filename: image.filename || null,
-        mimeType: image.mimeType || null,
-        seed: extractSeed(payload)
-      };
+    let completed = false;
+    let completedPayload = null;
+    let streamError = null;
+    await readSseEvents(response, async ({ event, data }) => {
+      lastEvent = event || lastEvent;
+      console.log("[ZOZ_HF_ZERO_GPU] event", JSON.stringify({ eventId, event: event || null }));
+      if (event === "error" || data === "error") {
+        streamError = data;
+        return;
+      }
+      if (event === "complete") {
+        completed = true;
+        completedPayload = data;
+      } else if (event !== "heartbeat" && data != null) {
+        const hit = findImageValue(data);
+        if (hit) {
+          completed = true;
+          completedPayload = data;
+        }
+      }
+    });
+
+    if (streamError) {
+      return { ok: false, status: "failed", reason: "zerogpu_generation_error", httpStatus: lastStatus, detail: String(streamError).slice(0, 500) };
     }
 
-    await new Promise(resolve => setTimeout(resolve, 750));
+    if (completed) {
+      const image = findImageValue(completedPayload);
+      if (image) {
+        return {
+          ok: true,
+          executionMode: "huggingface-zerogpu",
+          renderer: "zoz-huggingface-zerogpu",
+          model: process.env.ZOZ_HF_MODEL || "Qwen/Qwen-Image-2512",
+          device: "cuda",
+          imageUrl: image.url || null,
+          path: image.path || null,
+          filename: image.filename || null,
+          mimeType: image.mimeType || null,
+          seed: extractSeed(completedPayload)
+        };
+      }
+      return { ok: false, status: "failed", reason: "zerogpu_complete_without_image", httpStatus: lastStatus, event: lastEvent };
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 250));
   }
 
-  return { ok: false, status: "failed", reason: "zerogpu_timeout", httpStatus: lastStatus };
+  return { ok: false, status: "failed", reason: "zerogpu_timeout", httpStatus: lastStatus, event: lastEvent };
 }
 
 async function generateViaZeroGPU(input = {}) {
