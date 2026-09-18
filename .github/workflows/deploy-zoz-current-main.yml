@@ -1,6 +1,8 @@
 name: Deploy ZOZ current main directly to Railway
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
     paths:
