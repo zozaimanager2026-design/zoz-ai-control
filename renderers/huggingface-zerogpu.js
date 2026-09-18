@@ -177,7 +177,7 @@ async function pollResult(spaceUrl, eventId, timeoutMs) {
       {
         method: "GET",
         headers: { Accept: "text/event-stream", ...headers() },
-        signal: timeoutSignal(Math.min(30000, Math.max(5000, deadline - Date.now())))
+        // Qwen-Image-2512 reserves up to 120s of ZeroGPU execution.\n        // Do not abort the SSE request at 30s; that was masking a valid queued job as a timeout.\n        signal: timeoutSignal(Math.min(125000, Math.max(10000, deadline - Date.now())))
       }
     );
     lastStatus = response.status;
