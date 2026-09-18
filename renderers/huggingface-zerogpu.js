@@ -14,7 +14,7 @@ function config() {
     apiName: String(process.env.ZOZ_HF_API_NAME || "infer"),
     profile: String(process.env.ZOZ_HF_PROFILE || "qwen-image-2512"),
     model: String(process.env.ZOZ_HF_MODEL || "Qwen/Qwen-Image-2512"),
-    timeoutMs: Number(process.env.ZOZ_HF_TIMEOUT_MS || 180000),
+    timeoutMs: Number(process.env.ZOZ_HF_TIMEOUT_MS || 300000),
     tokenConfigured: Boolean(process.env.HF_TOKEN),
     publicSpaceSupported: true,
     note: "Free ZeroGPU quota is provider-side and may be limited; no paid provider is required."
@@ -177,11 +177,12 @@ async function pollResult(spaceUrl, eventId, timeoutMs) {
       {
         method: "GET",
         headers: { Accept: "text/event-stream", ...headers() },
-        // Qwen-Image-2512 reserves up to 120s of ZeroGPU execution.\n        // Do not abort the SSE request at 30s; that was masking a valid queued job as a timeout.\n        signal: timeoutSignal(Math.min(125000, Math.max(10000, deadline - Date.now())))
+        // Qwen-Image-2512 reserves up to 120s of ZeroGPU execution.\n        // Do not abort the SSE request at 30s; that was masking a valid queued job as a timeout.\n        signal: timeoutSignal(Math.min(245000, Math.max(10000, deadline - Date.now())))
       }
     );
     lastStatus = response.status;
     const data = await response.text();
+    console.log("[ZOZ_HF_ZERO_GPU] poll", JSON.stringify({ eventId, httpStatus: response.status, bytes: data.length }));
     const payload = extractEventPayload(data);
 
     if (payload === "error" || payload?.type === "error") {
