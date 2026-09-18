@@ -5,12 +5,21 @@ const TEST_SOURCE = 'digital_execution_library_runtime_test_v1';
 const ARTIFACT = 'artifacts/execution-test/landing-page.html';
 
 async function main() {
-  const store = createStore();
+  // This is a non-destructive pre-deploy execution-library check. It must not depend on production persistence.
+  // A database timeout here must never block a deployment, so run the library test against the in-memory store.
+  const originalDatabaseUrl = process.env.DATABASE_URL;
+  const originalZozDatabaseUrl = process.env.ZOZ_DATABASE_URL;
+  delete process.env.DATABASE_URL;
+  delete process.env.ZOZ_DATABASE_URL;
+  let store;
   try {
+    store = createStore();
     await store.init();
-  } catch (error) {
-    console.warn('[ZOZ execution library test] database unavailable during pre-deploy check; continuing:', error.message);
-    return;
+  } finally {
+    if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = originalDatabaseUrl;
+    if (originalZozDatabaseUrl === undefined) delete process.env.ZOZ_DATABASE_URL;
+    else process.env.ZOZ_DATABASE_URL = originalZozDatabaseUrl;
   }
   const state = await store.load();
   const existing = state.tasks.find((task) => task.source === TEST_SOURCE);
