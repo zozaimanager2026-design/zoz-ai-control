@@ -13,17 +13,22 @@ on:
       - ".github/workflows/deploy-zoz-current-main.yml"
   workflow_dispatch:
 
+concurrency:
+  group: zoz-railway-direct-deploy
+  cancel-in-progress: true
+
 jobs:
   deploy-existing-service:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
       RAILWAY_PROJECT_ID: "5c56dcd6-bbf1-4ae7-8e1c-df521e22aa02"
       RAILWAY_SERVICE_ID: "ae43c326-b01b-494e-9692-5308d309aec1"
       RAILWAY_ENVIRONMENT: "production"
+
     steps:
       - name: Checkout exact main commit
         uses: actions/checkout@v4
@@ -35,26 +40,97 @@ jobs:
         run: npm install -g @railway/cli
 
       - name: Deploy current main to existing ZOZ service
+        id: deploy
+        shell: bash
         run: |
           set -euo pipefail
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" | tee /tmp/zoz-source.txt
+
           if [ -n "${RAILWAY_TOKEN}" ]; then
             unset RAILWAY_API_TOKEN
           elif [ -n "${RAILWAY_API_TOKEN}" ]; then
             unset RAILWAY_TOKEN
           else
-            echo "No Railway deployment token is configured in GitHub Actions secrets."
+            echo "ERROR=No Railway deployment token configured in GitHub Actions secrets" | tee /tmp/zoz-error.txt
             exit 2
           fi
 
-          echo "Deploying Git commit:"
-          git rev-parse HEAD
+          railway up             --project "${RAILWAY_PROJECT_ID}"             --environment "${RAILWAY_ENVIRONMENT}"             --service "${RAILWAY_SERVICE_ID}"             --detach             --yes             --json | tee /tmp/railway-up.json
 
-          railway up \
-            --project "${RAILWAY_PROJECT_ID}" \
-            --environment "${RAILWAY_ENVIRONMENT}" \
-            --service "${RAILWAY_SERVICE_ID}" \
-            --ci \
-            --yes
+          for i in $(seq 1 24); do
+            sleep 10
+            railway deployment list               --service "${RAILWAY_SERVICE_ID}"               --environment "${RAILWAY_ENVIRONMENT}"               --json > /tmp/railway-deployments.json
 
-      - name: Verify deployment command completed
-        run: echo "Railway CLI upload/build command completed for the existing service."
+            if python - <<'PY'
+import json
+with open('/tmp/railway-deployments.json', 'r', encoding='utf-8') as f:
+    data = json.load(f)
+items = data if isinstance(data, list) else data.get('deployments', [])
+for item in items:
+    status = str(item.get('status', '')).upper()
+    if status == 'SUCCESS':
+        print(json.dumps(item))
+        raise SystemExit(0)
+    if status in {'FAILED', 'CRASHED'}:
+        print(json.dumps(item))
+        raise SystemExit(3)
+raise SystemExit(4)
+PY
+            then
+              exit 0
+            else
+              rc=$?
+              if [ "$rc" -eq 3 ]; then
+                exit 3
+              fi
+            fi
+          done
+
+          echo "ERROR=Deployment did not reach terminal success within polling window" | tee /tmp/zoz-error.txt
+          exit 4
+
+      - name: Record deployment result
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+import json, os, datetime
+out = {
+  "updatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+  "workflowRun": os.environ.get("GITHUB_RUN_ID"),
+  "workflowAttempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+  "sourceSha": "",
+  "result": "unknown",
+  "details": {}
+}
+try:
+    with open('/tmp/zoz-source.txt', 'r', encoding='utf-8') as f:
+        for line in f:
+            if line.startswith('SOURCE_SHA='):
+                out["sourceSha"] = line.strip().split('=', 1)[1]
+except FileNotFoundError:
+    pass
+try:
+    with open('/tmp/railway-deployments.json', 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    out["details"]["railway"] = data if isinstance(data, dict) else {"deployments": data}
+except Exception:
+    pass
+try:
+    with open('/tmp/zoz-error.txt', 'r', encoding='utf-8') as f:
+        out["details"]["error"] = f.read().strip()
+except FileNotFoundError:
+    pass
+deployments = out["details"].get("railway", {}).get("deployments", [])
+if any(str(x.get("status", "")).upper() == "SUCCESS" for x in deployments):
+    out["result"] = "success"
+elif out["details"].get("error"):
+    out["result"] = "failed"
+with open('ops/railway-direct-deploy-status.json', 'w', encoding='utf-8') as f:
+    json.dump(out, f, ensure_ascii=False, indent=2)
+PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ops/railway-direct-deploy-status.json
+          git commit -m "Record Railway direct deployment result" || true
+          git push origin HEAD:main || true
