@@ -1,29 +1,8 @@
 {
-  "version": 2,
-  "buildCommand": "node scripts/enable-postgres-persistence.js",
-  "builds": [
-    { "src": "server.js", "use": "@vercel/node" },
-    { "src": "api/whatsapp-status.js", "use": "@vercel/node" },
-    { "src": "api/execution.js", "use": "@vercel/node" },
-    { "src": "api/execution-cycle.js", "use": "@vercel/node" },
-    { "src": "api/zoz-memory.js", "use": "@vercel/node" },
-    { "src": "api/automation-heartbeat.js", "use": "@vercel/node" },
-    { "src": "api/zoz-autonomy.js", "use": "@vercel/node" },
-    { "src": "api/zoz-reconcile.js", "use": "@vercel/node" }
-  ],
-  "routes": [
-    { "src": "/api/whatsapp-status", "dest": "api/whatsapp-status.js" },
-    { "src": "/api/execution", "dest": "api/execution.js" },
-    { "src": "/api/execution-cycle", "dest": "api/execution-cycle.js" },
-    { "src": "/api/zoz-memory", "dest": "api/zoz-memory.js" },
-    { "src": "/api/zoz-autonomy", "dest": "api/zoz-autonomy.js" },
-    { "src": "/api/automation-heartbeat", "dest": "api/automation-heartbeat.js" },
-    { "src": "/api/zoz-reconcile", "dest": "api/zoz-reconcile.js" },
-    { "src": "/(.*)", "dest": "server.js" }
-  ],
-  "crons": [
-    { "path": "/api/automation-heartbeat", "schedule": "*/15 * * * *" },
-    { "path": "/api/automation/cycle", "schedule": "0 3 * * *" },
-    { "path": "/api/execution-cycle", "schedule": "0 4 * * *" }
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "echo ZOZ static mobile shell",
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://zoz-ai-control-production.up.railway.app/api/:path*" }
   ]
 }
