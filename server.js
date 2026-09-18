@@ -4,6 +4,8 @@ const dotenv = require("dotenv");
 const path = require("path");
 const business = require("./business");
 const { buildPeachTemplatePayload, normalizePeachWebhook, publicWebhookAudit } = require("./peach");
+const rendererRuntime = require("./renderers/runtime");
+const { renderImage } = require("./renderers/native-image-adapter");
 const { youtubeConfigured, uploadYouTubeVideo, getYouTubeVideoStatus } = require("./youtube");
 
 dotenv.config();
@@ -104,6 +106,9 @@ app.post("/api/jobs/:id/execute", async (req, res) => { const job = state.jobs.f
 app.post("/api/replies/preview", (req, res) => { const text = req.body?.text || ""; res.json({ text, financialApprovalRequired: isFinanciallySensitive(text), ready: true }); });
 app.get("/api/connectors/status", (req, res) => res.json({ ...state.connectors, persistence: { enabled: persistence.enabled, provider: persistence.provider } }));
 app.get("/api/connectors/requirements", (req, res) => res.json({ whatsapp: "PEACH_API_KEY + PEACH_TEMPLATE_ID + WHATSAPP_SEND_SECRET; Meta webhook uses WHATSAPP_VERIFY_TOKEN + WHATSAPP_APP_SECRET", database: "DATABASE_URL or KV_REST_API_URL + KV_REST_API_TOKEN", cron: "CRON_SECRET", financialRule: "لا دفع أو شراء أو تحويل أو استلام أموال دون Human Approval" }));
+app.get("/api/renderers/status", (req, res) => res.json(rendererRuntime.status()));
+app.get("/api/renderers/policy", (req, res) => res.json(rendererRuntime.inspectLibrary().policy));
+app.post("/api/renderers/image", async (req, res) => { const denied = authorizeSecret(req, res, process.env.RENDERER_INTERNAL_SECRET || process.env.CRON_SECRET, "renderer_unauthorized"); if (denied) return; try { const result = await renderImage(req.body || {}); return res.status(result.ok ? 200 : (result.status === "waiting_for_renderer" ? 503 : 502)).json(result); } catch (error) { audit("native_image_render_error", { message: error.message }); return res.status(502).json({ ok: false, error: "native_image_render_failed" }); } });
 app.get("/api/connectors/verify", async (req, res) => { const ids = req.query.id ? String(req.query.id).split(",").filter(Boolean) : ["whatsapp"]; const results = []; for (const id of ids) results.push(await verifyConnector(id)); await saveState(); res.json({ ok: results.every((x) => x.verified), results, readiness: readiness() }); });
 
 app.get("/api/whatsapp/webhook", (req, res) => { const mode = req.query["hub.mode"], token = req.query["hub.verify_token"], challenge = req.query["hub.challenge"]; if (!process.env.WHATSAPP_VERIFY_TOKEN) return res.status(503).send("WHATSAPP_VERIFY_TOKEN not configured"); if (mode === "subscribe" && token === process.env.WHATSAPP_VERIFY_TOKEN) return res.status(200).send(challenge || ""); return res.sendStatus(403); });
