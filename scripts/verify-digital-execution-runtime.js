@@ -68,13 +68,17 @@ async function main() {
   const steps = [];
   while (task.status !== 'completed') {
     const result = advanceSafeTask(state, task);
+    if (result.reason === 'renderer_execution_pending' && task.stage === 'execute') {
+      steps.push({ stage: 'execute', status: 'handoff_pending', tools: result.selectedTools, handoff: 'renderer' });
+      break;
+    }
     if (!result.executed) throw new Error(`Execution test blocked: ${result.reason}`);
     steps.push({ stage: result.stage, status: result.status, tools: result.selectedTools });
     if (steps.length > 12) throw new Error('Execution test exceeded expected stage count');
   }
 
   task.digitalExecution.completedSteps = steps.map((item) => item.stage);
-  task.digitalExecution.status = 'completed';
+  task.digitalExecution.status = task.stage === 'execute' ? 'renderer_handoff_ready' : 'completed';
   task.digitalExecution.testResult = 'passed';
   task.digitalExecution.artifact = ARTIFACT;
   await store.save(state);
