@@ -1,0 +1,42 @@
+name: ZOZ ZeroGPU Live Probe
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Probe Qwen ZeroGPU
+        env:
+          HF_SPACE: https://qwen-qwen-image-2512.hf.space
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, time, urllib.request
+          space=os.environ["HF_SPACE"].rstrip("/")
+          url=space+"/gradio_api/call/infer"
+          payload={"data":["ZOZ AI live probe image, clean futuristic business operating system branding",42,True,"1:1",4,4,False]}
+          req=urllib.request.Request(url, data=json.dumps(payload).encode(), headers={"Content-Type":"application/json"})
+          with urllib.request.urlopen(req, timeout=45) as r:
+              body=r.read().decode()
+              print("ENQUEUE_STATUS", r.status)
+              print("ENQUEUE_BODY", body)
+          event=json.loads(body).get("event_id")
+          if not event:
+              raise SystemExit("NO_EVENT_ID")
+          result_url=space+"/gradio_api/call/infer/"+event
+          req=urllib.request.Request(result_url, headers={"Accept":"text/event-stream"})
+          with urllib.request.urlopen(req, timeout=180) as r:
+              raw=r.read().decode(errors="replace")
+          print("STREAM_BYTES", len(raw))
+          print("STREAM_RAW_START")
+          print(raw[:12000])
+          print("STREAM_RAW_END")
+          open("/tmp/zerogpu-sse.txt","w").write(raw)
+          if 'event: complete' not in raw and 'event: error' not in raw:
+              raise SystemExit("NO_TERMINAL_EVENT")
+          PY
