@@ -100,10 +100,15 @@
   </section>
 
   <section>
-    <h2>🎨 صور ZOZ AI المولدة</h2>
-    <div id="galleryStatus" class="gallery-status pending">جاري متابعة حالة آخر توليد...</div>
-    <p class="small">عند نجاح التوليد تُحفظ الصورة في مخزن ZOZ الدائم وتظهر هنا من الهاتف، مع رابط مستقل لفتحها.</p>
-    <div id="generatedImages" class="image-grid">جاري تحميل معرض الصور...</div>
+    <h2>🎨 مكتبة صور ZOZ AI</h2>
+    <div id="galleryStatus" class="gallery-status pending">جاري فحص مكتبة الصور...</div>
+    <div class="business-grid">
+      <div class="business-item">الصور المحفوظة<br><strong id="imageCount">0</strong></div>
+      <div class="business-item">التخزين الأساسي<br><strong id="imageStorage">PostgreSQL</strong></div>
+      <div class="business-item">مسار الصورة<br><strong>/api/assets/:id</strong></div>
+    </div>
+    <p class="small">كل صورة ناجحة تُحفظ داخل قاعدة بيانات ZOZ كبيانات ثنائية، وتُعرض من الهاتف عبر مسار ثابت داخل التطبيق. يوجد أيضًا نسخ احتياطي محلي تلقائي عند توفره.</p>
+    <div id="generatedImages" class="image-grid">جاري تحميل مكتبة الصور...</div>
   </section>
 
   <section>
@@ -187,9 +192,11 @@ async function loadGeneratedImages() {
   try {
     const data = await getJson("/api/renderers/latest");
     const images = Array.isArray(data.images) ? data.images : [];
+    document.getElementById("imageCount").textContent = images.length;
+    document.getElementById("imageStorage").textContent = data.assetStore?.durablePrimary ? "PostgreSQL" : "Filesystem backup";
     const box = document.getElementById("generatedImages");
     box.innerHTML = "";
-    if (!images.length) { status.className = "gallery-status pending"; status.textContent = "⏳ لا توجد صورة ناجحة محفوظة حتى الآن. سيظهر إشعار هنا فور نجاح أول توليد."; box.textContent = "لا توجد صور مولدة بعد."; return; }
+    if (!images.length) { status.className = "gallery-status pending"; status.textContent = "⏳ لا توجد صورة ناجحة محفوظة حتى الآن. سيظهر إشعار هنا فور نجاح أول توليد."; box.textContent = "لا توجد صور محفوظة بعد."; return; }
     status.className = "gallery-status success"; status.textContent = "✅ تم حفظ آخر صورة مولدة في معرض ZOZ AI. يمكنك فتحها من الهاتف في أي وقت.";
     images.forEach(img => {
       const card = document.createElement("div"); card.className = "image-card";
