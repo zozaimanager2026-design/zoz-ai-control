@@ -101,7 +101,7 @@
 
   <section>
     <h2>🪄 مولد الصور الفعلي</h2>
-    <p class="small">التوليد يمر عبر Vercel إلى ZeroGPU المجاني، مع محاولة Qwen-Image أولًا ثم Qwen-Image-2512 عند الحاجة.</p>
+    <p class="small">التوليد المجاني يبدأ من المتصفح مباشرة إلى ZeroGPU لتجنب مهلة البروكسي، مع بقاء Vercel كمسار بديل. النموذج الأساسي Qwen-Image، وQwen-Image-2512 متاح عند الحاجة.</p>
     <label>وصف الصورة</label>
     <textarea id="imagePrompt" placeholder="مثال: تصميم إعلاني فاخر لجهاز تكييف منزلي بأسلوب ZOZ AI"></textarea>
     <div class="form-grid">
@@ -121,7 +121,7 @@
       <div class="business-item">التخزين الأساسي<br><strong id="imageStorage">PostgreSQL</strong></div>
       <div class="business-item">مسار الصورة<br><strong>/api/assets/:id</strong></div>
     </div>
-    <p class="small">كل صورة ناجحة تُحفظ داخل قاعدة بيانات ZOZ كبيانات ثنائية، وتُعرض من الهاتف عبر مسار ثابت داخل التطبيق. يوجد أيضًا نسخ احتياطي محلي تلقائي عند توفره.</p>
+    <p class="small">الصور الموجودة في المعرض هي الصور المحفوظة على خادم ZOZ/Railway. الصورة المولدة مباشرة من ZeroGPU في المتصفح تظهر فورًا في نتيجة التوليد، بينما الحفظ الدائم يحتاج مسار التخزين الخلفي.</p>
     <div id="generatedImages" class="image-grid">جاري تحميل مكتبة الصور...</div>
   </section>
 
@@ -269,13 +269,22 @@ async function generateImage() {
   if (!prompt) { status.className = "gallery-status pending"; status.textContent = "اكتب وصف الصورة أولًا."; return; }
   button.disabled = true;
   status.className = "gallery-status pending";
-  status.textContent = "⏳ جاري التوليد الفعلي...";
+  status.textContent = "⏳ جاري التوليد الفعلي عبر ZeroGPU المجاني...";
   box.innerHTML = "";
   const ratio = document.getElementById("imageRatio").value;
   const size = ratio === "16:9" ? [1280,720] : ratio === "9:16" ? [720,1280] : ratio === "4:3" ? [1152,864] : [1024,1024];
   try {
     let result;
     try {
+      // Browser-first: this avoids the Vercel external-proxy timeout on long ZeroGPU jobs.
+      result = await browserZeroGpu({
+        prompt,
+        width: size[0],
+        height: size[1],
+        steps: 4
+      });
+    } catch (browserError) {
+      status.textContent = "تعذر التشغيل المباشر؛ نجرب مسار Vercel إلى ZeroGPU...";
       result = await postJson("/api/renderers/image", {
         prompt,
         width: size[0],
@@ -283,15 +292,7 @@ async function generateImage() {
         steps: Number(document.getElementById("imageSteps").value || 12),
         guidanceScale: 4
       });
-      if (!result.ok || !result.imageUrl) throw new Error(result.reason || "لم تصل صورة");
-    } catch (serverError) {
-      status.textContent = "المسار السحابي غير متاح؛ نجرب ZeroGPU من المتصفح مباشرة...";
-      result = await browserZeroGpu({
-        prompt,
-        width: size[0],
-        height: size[1],
-        steps: 4
-      });
+      if (!result.ok || !result.imageUrl) throw new Error(result.reason || browserError.message || "لم تصل صورة");
     }
     status.className = "gallery-status success";
     status.textContent = "✅ تم توليد الصورة فعليًا.";
@@ -315,6 +316,7 @@ async function generateImage() {
     button.disabled = false;
   }
 }
+
 async function loadGeneratedImages() {
   const status = document.getElementById("galleryStatus");
   try {
