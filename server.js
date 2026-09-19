@@ -162,6 +162,27 @@ loadState().then(() => audit("system_started", { persistence: persistence.enable
 module.exports = app;
 if (!process.env.VERCEL) app.listen(PORT, () => {
   console.log(ZOZ_NAME + " running on port " + PORT);
+  if (process.env.ZOZ_KAGGLE_READONLY_STARTUP_CHECK === "true") {
+    setTimeout(async () => {
+      try {
+        const result = await kaggleControl.kernelStatus();
+        console.log("[ZOZ_KAGGLE_READONLY_CHECK]", JSON.stringify({
+          ok: result.ok === true,
+          configured: result.configured === true,
+          kernel: result.kernel || null,
+          authMode: result.authMode || "missing",
+          httpStatus: result.httpStatus || null,
+          kaggleReachable: result.httpStatus != null,
+          executionEnabled: result.executionEnabled === true
+        }));
+      } catch (error) {
+        console.error("[ZOZ_KAGGLE_READONLY_CHECK]", JSON.stringify({
+          ok: false,
+          error: "kaggle_read_only_check_failed"
+        }));
+      }
+    }, 5000);
+  }
   if (process.env.ZOZ_RENDERER_SMOKE_TEST === "true" && process.env.ZOZ_RENDERER_SMOKE_TEST_FORCE === "true") {
     setTimeout(async () => {
       const prompt = "A clean futuristic ZOZ AI business operating system dashboard, premium technology branding, square composition";
