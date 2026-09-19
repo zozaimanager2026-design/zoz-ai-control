@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { RENDERERS, resolveRenderer, buildRendererJob, getRenderPolicy } = require("./index");
 const { createDefaultAdapters } = require("./local-executors");
-const { renderImage: renderNativeImage } = require("./native-image-adapter");
+const { renderImage: renderNativeImage, status: nativeImageStatus } = require("./native-image-adapter");
 const gpuLifecycle = require("./gpu-lifecycle");
 const costMeter = require("./cost-meter");
 
@@ -54,7 +54,7 @@ function inspectLibrary() {
     failures,
     policy: getRenderPolicy(),
     localExecution: true,
-    nativeImage: { enabled: true, provider: "zoz-native-image-renderer" },
+    nativeImage: { enabled: true, provider: "zoz-native-image-renderer", adapter: nativeImageStatus() },
     gpuLifecycle: gpuLifecycle.status(),
     costModel: costMeter.config()
   };
