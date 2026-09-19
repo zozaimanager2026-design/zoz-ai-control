@@ -65,6 +65,15 @@ app.post("/api/renderer/improve", (req, res) => {
 
 async function heartbeat(trigger = "scheduled") {
   if (running) return;
+  if (trigger === "startup" && process.env.ZOZ_KAGGLE_READONLY_STARTUP_CHECK === "true") {
+    try {
+      const kaggleControl = require("../renderers/kaggle-control");
+      const check = await kaggleControl.kernelStatus();
+      console.log("[ZOZ_KAGGLE_READONLY_CHECK]", JSON.stringify({ ok: check.ok === true, configured: check.configured === true, kernel: check.kernel || null, authMode: check.authMode || "missing", httpStatus: check.httpStatus || null, kaggleReachable: check.httpStatus != null, executionEnabled: check.executionEnabled === true }));
+    } catch (error) {
+      console.error("[ZOZ_KAGGLE_READONLY_CHECK]", JSON.stringify({ ok: false, error: "kaggle_read_only_check_failed" }));
+    }
+  }
   running = true;
   try {
     const result = await runAutonomousRuntime(trigger);
