@@ -16,7 +16,8 @@ function authorizeRenderer(req, res) {
   return null;
 }
 
-// Integrated Renderer layer: the existing Railway service remains the Core and now
+// Integrated Renderer layer: the existing Railway service remains the Core; Kaggle verification stays read-only.
+// The renderer remains the Core and now
 // exposes the independent renderer through the same process. Heavy work is queued and
 // concurrency is deliberately capped so renderer load cannot consume the whole Core.
 app.get("/api/renderer/health", (req, res) => {
