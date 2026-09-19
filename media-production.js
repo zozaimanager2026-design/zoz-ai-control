@@ -45,7 +45,7 @@ function movieFor(content) {
   ] }));
   return normalizeRendererSchema({ resolution: "full-hd", quality: "high", cache: false, comment: `ZOZ AI professional Arabic content episode — renderer v5 — target ${TARGET_VIDEO_SECONDS}s`, scenes, elements: [{ type: "subtitles", language: "ar", settings: { style: "classic-progressive", position: "bottom-center", "max-words-per-line": 4, "font-size": 48, "font-weight": 900, "line-color": "#FFFFFF", "word-color": "#D8FF3E", "outline-color": "#000000", "outline-width": 4 } }] });
 }
-function legacyRendererError(reason) { const text = String(reason || "").toLowerCase(); return text.includes("font-size") && (text.includes("string") || text.includes("42px") || text.includes("expected integer")); }
+function legacyRendererError(reason) { const text = String(reason || "").toLowerCase(); return (text.includes("font-size") && (text.includes("string") || text.includes("42px") || text.includes("expected integer"))) || (text.includes("color format is not supported") && (text.includes("outlinecolor") || text.includes("outline-color") || text.includes("wordcolor") || text.includes("linecolor"))); }
 async function submitRender(content) {
   const apiKey = process.env.J2V_API_KEY || process.env.JSON2VIDEO_API_KEY; if (!apiKey) return { ok: false, stage: "needs_renderer", reason: "J2V_API_KEY_missing" }; const payload = movieFor(content);
   const response = await fetchJson("https://api.json2video.com/v2/movies", { method: "POST", headers: { "x-api-key": apiKey, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
