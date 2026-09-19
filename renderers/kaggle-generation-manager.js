@@ -283,6 +283,28 @@ async function ingestCompletedJob(job) {
   }
 }
 
+async function recoverUntrackedImageOutput() {
+  if (process.env.ZOZ_KAGGLE_RECOVER_UNTRACKED_OUTPUT !== "true" || !pool || !kaggle.configured()) return { ok: true, skipped: true, reason: "recovery_disabled" };
+  await ensureTable();
+  const statusResult = await kaggle.kernelStatus();
+  const normalized = normalizeStatus(statusResult);
+  const version = extractVersionNumber(statusResult);
+  if (!isTerminalSuccess(normalized) || !version) return { ok: true, skipped: true, reason: "kernel_not_complete", status: normalized, version };
+  const kernel = String(process.env.ZOZ_KAGGLE_KERNEL || "").trim();
+  const existing = await pool.query("SELECT id, status, asset_ids FROM zoz_kaggle_jobs WHERE kernel=$1 AND version_number=$2 LIMIT 1", [kernel, String(version)]);
+  if (existing.rows[0]) return { ok: true, skipped: true, reason: "version_already_tracked", jobId: existing.rows[0].id, status: existing.rows[0].status };
+  const output = await kaggle.kernelOutput();
+  if (!output.ok) return { ok: false, error: "kaggle_output_failed:" + output.status };
+  const files = outputFiles(output.body || {}).filter(isImageFile);
+  const target = files.find(file => /(^|\/)zoz_ai_logo_master\.png$/i.test(fileNameOf(file)));
+  if (!target) return { ok: true, skipped: true, reason: "target_output_not_found", files: files.slice(0, 10).map(fileNameOf) };
+  const id = "kaggle_recovery_" + String(version).replace(/[^a-zA-Z0-9_-]/g, "_");
+  const job = { id, kernel, versionNumber: String(version), ref: statusResult.result?.ref || null, title: "ZOZ AI recovered Kaggle generation", prompt: "Recovered ZOZ AI image generation output", requestedOutputs: ["zoz_ai_logo_master.png"], createdAt: new Date().toISOString() };
+  await insertJob(job);
+  await updateJob(id, { status: "completed", completed_at: new Date() });
+  return { ok: true, recovered: true, ingest: await ingestCompletedJob({ ...job, status: "completed" }) };
+}
+
 async function monitorOnce() {
   if (!pool || !kaggle.configured()) return { ok: true, skipped: true, reason: "monitoring_not_configured" };
   const jobs = await listActiveJobs(20);
@@ -332,10 +354,10 @@ async function monitorOnce() {
 let timer = null;
 function startMonitoring() {
   if (timer || !pool || !kaggle.configured()) return false;
-  const run = () => monitorOnce().catch(() => null);
+  const run = async () => { try { await recoverUntrackedImageOutput(); await monitorOnce(); } catch {} };
   setTimeout(run, 15000);
   timer = setInterval(run, DEFAULT_POLL_MS);
   return true;
 }
 
-module.exports = { submitImageGeneration, monitorOnce, startMonitoring, listActiveJobs, normalizeStatus, extractVersionNumber, ensureTable };
+module.exports = { submitImageGeneration, monitorOnce, recoverUntrackedImageOutput, startMonitoring, listActiveJobs, normalizeStatus, extractVersionNumber, ensureTable };
