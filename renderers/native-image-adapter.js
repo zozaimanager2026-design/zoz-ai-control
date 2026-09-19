@@ -163,7 +163,8 @@ function status() {
     executionPolicy: "free_first_then_pay_per_heavy_job",
     paidExecutionRequiresHumanApproval: paidProvider(selected),
     huggingface: hfConfig(),
-    kaggleConfigured: Boolean(KAGGLE_URL),\n    runpodConfigured: runpod.configured(),
+    kaggleConfigured: Boolean(KAGGLE_URL),
+    runpodConfigured: runpod.configured(),
     cloudflareConfigured: Boolean(CLOUDFLARE_AI_URL),
     cloudflareAiUrl: CLOUDFLARE_AI_URL || null,
     nativeUrl: NATIVE_URL
