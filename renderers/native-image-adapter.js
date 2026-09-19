@@ -5,6 +5,23 @@ const SECRET = process.env.ZOZ_NATIVE_IMAGE_RENDERER_SECRET || process.env.RENDE
 const { generateViaZeroGPU, config: hfConfig } = require("./huggingface-zerogpu");
 const runpod = require("./runpod-serverless-image-adapter");
 const CLOUDFLARE_AI_URL = String(process.env.ZOZ_CLOUDFLARE_AI_URL || "").replace(/\/$/, "");
+const KAGGLE_URL = String(process.env.ZOZ_KAGGLE_IMAGE_RENDERER_URL || "").replace(/\/$/, "");
+const KAGGLE_SECRET = process.env.ZOZ_KAGGLE_IMAGE_RENDERER_SECRET || "";
+
+async function requestKaggle(input) {
+  if (!KAGGLE_URL) return { ok: false, status: "unavailable", reason: "kaggle_renderer_url_not_configured" };
+  try {
+    const response = await fetch(KAGGLE_URL + "/v1/images/generations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(KAGGLE_SECRET ? { Authorization: "Bearer " + KAGGLE_SECRET } : {}) },
+      body: JSON.stringify(payloadForNative(input))
+    });
+    const text = await response.text();
+    let body; try { body = text ? JSON.parse(text) : {}; } catch { body = { text: text.slice(0, 500) }; }
+    if (!response.ok || !(body.imageBase64 || body.imageUrl || body.url || body.path)) return { ok: false, status: "failed", reason: body.error || body.detail || "kaggle_renderer_failed", httpStatus: response.status };
+    return { ok: true, executionMode: "kaggle-free-gpu", provider: "kaggle", model: body.model || "ZOZ-Kaggle-GPU", imageBase64: body.imageBase64 || null, imageUrl: body.imageUrl || body.url || null, path: body.path || null, mimeType: body.mimeType || "image/png" };
+  } catch (error) { return { ok: false, status: "unavailable", reason: "kaggle_renderer_unreachable", detail: error.message }; }
+}
 
 console.log("[ZOZ_NATIVE_IMAGE_ADAPTER_V2] loaded from current main");
 const provider = () => String(process.env.ZOZ_IMAGE_PROVIDER || "native").trim().toLowerCase();
@@ -97,7 +114,9 @@ async function renderImage(input = {}) {
     return { ok: false, status: "failed", reason: "free_renderer_failed", freeReason: free.reason, nativeReason: native.reason };
   }
 
-  // ZOZ-native renderer is attempted first; Cloudflare Workers AI is the free cloud fallback.
+  // Priority: Kaggle free GPU (30h/week baseline) -> ZOZ native -> Hugging Face ZeroGPU -> Cloudflare free fallback.
+  const kaggle = await requestKaggle(input);
+  if (kaggle.ok) return kaggle;
   const native = await requestNative(payloadForNative(input));
   if (native.ok) return native;
   const cloudflare = await requestCloudflare(input);
@@ -144,7 +163,7 @@ function status() {
     executionPolicy: "free_first_then_pay_per_heavy_job",
     paidExecutionRequiresHumanApproval: paidProvider(selected),
     huggingface: hfConfig(),
-    runpodConfigured: runpod.configured(),
+    kaggleConfigured: Boolean(KAGGLE_URL),\n    runpodConfigured: runpod.configured(),
     cloudflareConfigured: Boolean(CLOUDFLARE_AI_URL),
     cloudflareAiUrl: CLOUDFLARE_AI_URL || null,
     nativeUrl: NATIVE_URL
