@@ -141,8 +141,50 @@ app.get("/api/renderers/gpu", (req, res) => res.json(rendererRuntime.status().gp
 app.get("/api/renderers/usage", (req, res) => res.json(rendererRuntime.status().renderUsage || []));
 app.get("/api/renderers/latest", async (req, res) => { const persisted = await assetStore.listImages(50); const fallback = state.generatedImages.slice(-20).reverse(); res.json({ ok: true, images: persisted.length ? persisted : fallback, assetStore: assetStore.status(), source: persisted.length ? "postgresql" : "runtime_state" }); });
 app.get("/api/assets", async (req, res) => { const images = await assetStore.listImages(req.query.limit); res.json({ ok: true, count: images.length, images, storage: assetStore.status() }); });
+app.post("/api/assets/import", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const imageUrl = String(body.imageUrl || body.url || "").trim();
+    if (!imageUrl) return res.status(400).json({ ok: false, error: "image_url_required" });
+    const parsed = new URL(imageUrl);
+    const host = parsed.hostname.toLowerCase();
+    const allowed = parsed.protocol === "https:" && (
+      host.endsWith(".hf.space") || host === "hf.space" ||
+      host.endsWith(".huggingface.co") || host === "huggingface.co" ||
+      host.endsWith(".huggingfaceusercontent.com") || host === "huggingfaceusercontent.com" ||
+      host.endsWith(".runpod.net") || host.endsWith(".runpod.io")
+    );
+    if (!allowed) return res.status(400).json({ ok: false, error: "asset_source_not_allowed" });
+    const id = "img_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+    const asset = await assetStore.persistImage({
+      id,
+      imageUrl,
+      sourceBaseUrl: process.env.ZOZ_HF_SPACE_URL || undefined,
+      prompt: String(body.prompt || ""),
+      provider: String(body.provider || "browser-renderer")
+    });
+    if (!asset.ok) return res.status(502).json({ ok: false, error: "asset_persist_failed", asset });
+    const record = {
+      id,
+      createdAt: new Date().toISOString(),
+      prompt: String(body.prompt || ""),
+      provider: String(body.provider || "browser-renderer"),
+      imageUrl: asset.url,
+      status: "saved",
+      asset
+    };
+    state.generatedImages.push(record);
+    if (state.generatedImages.length > 50) state.generatedImages.splice(0, state.generatedImages.length - 50);
+    await saveState();
+    return res.json({ ok: true, imageUrl: asset.url, asset, record });
+  } catch (error) {
+    audit("asset_import_failed", { message: error.message });
+    return res.status(502).json({ ok: false, error: "asset_import_failed" });
+  }
+});
+
 app.get("/api/assets/:id", async (req, res) => { try { const asset = await assetStore.getImage(req.params.id); if (asset) { res.set("Content-Type", asset.mime_type); res.set("Content-Disposition", `inline; filename="${String(asset.filename || "zoz-image").replace(/["\\r\\n]/g, "")}"`); res.set("Cache-Control", "public, max-age=31536000, immutable"); res.set("X-ZOZ-Asset-Tier", asset.tier || "primary"); return res.send(asset.bytes); } const record = state.generatedImages.find((item) => item.id === req.params.id); const sourceUrl = record?.asset?.sourceUrl || null; if (sourceUrl) { const parsed = new URL(sourceUrl); const host = parsed.hostname.toLowerCase(); const allowed = parsed.protocol === "https:" && (host.endsWith(".hf.space") || host === "hf.space" || host.endsWith(".huggingface.co") || host === "huggingface.co" || host.endsWith(".huggingfaceusercontent.com") || host === "huggingfaceusercontent.com" || host.endsWith(".runpod.net") || host.endsWith(".runpod.io")); if (allowed) return res.redirect(307, sourceUrl); } return res.status(404).json({ ok: false, error: "asset_not_found" }); } catch (error) { audit("asset_read_failed", { message: error.message }); return res.status(503).json({ ok: false, error: "asset_store_unavailable" }); } });
-app.post("/api/renderers/image", async (req, res) => { const denied = authorizeSecret(req, res, process.env.RENDERER_INTERNAL_SECRET || process.env.CRON_SECRET, "renderer_unauthorized"); if (denied) return; try { const result = await rendererRuntime.renderImage(req.body || {}); return res.status(result.ok ? 200 : (result.status === "waiting_for_renderer" ? 503 : 502)).json(result); } catch (error) { audit("native_image_render_error", { message: error.message }); return res.status(502).json({ ok: false, error: "native_image_render_failed" }); } });
+app.post("/api/renderers/image", async (req, res) => { const denied = authorizeSecret(req, res, process.env.RENDERER_INTERNAL_SECRET || process.env.CRON_SECRET, "renderer_unauthorized"); if (denied) return; try { const result = await rendererRuntime.renderImage(req.body || {}); if (result?.ok && (result.imageUrl || result.imageBase64)) { const id = "img_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8); try { const asset = await assetStore.persistImage({ id, imageUrl: result.imageUrl || null, imageBase64: result.imageBase64 || null, sourceBaseUrl: process.env.ZOZ_HF_SPACE_URL || undefined, prompt: String(req.body?.prompt || ""), provider: String(result.provider || result.providerId || result.metadata?.provider || "zoz-renderer") }); if (asset.ok) { result.originalImageUrl = result.imageUrl || null; result.asset = asset; result.imageUrl = asset.url; const record = { id, createdAt: new Date().toISOString(), prompt: String(req.body?.prompt || ""), provider: String(result.provider || result.providerId || result.metadata?.provider || "zoz-renderer"), status: result.status || "saved", imageUrl: asset.url, asset }; state.generatedImages.push(record); if (state.generatedImages.length > 50) state.generatedImages.splice(0, state.generatedImages.length - 50); await saveState(); } else { audit("asset_persist_failed", { message: "asset_store_returned_not_ok" }); } } catch (assetError) { audit("asset_persist_failed", { message: assetError.message }); } } return res.status(result.ok ? 200 : (result.status === "waiting_for_renderer" ? 503 : 502)).json(result); } catch (error) { audit("native_image_render_error", { message: error.message }); return res.status(502).json({ ok: false, error: "native_image_render_failed" }); } });
 app.get("/api/connectors/verify", async (req, res) => { const ids = req.query.id ? String(req.query.id).split(",").filter(Boolean) : ["whatsapp"]; const results = []; for (const id of ids) results.push(await verifyConnector(id)); await saveState(); res.json({ ok: results.every((x) => x.verified), results, readiness: readiness() }); });
 
 app.get("/api/whatsapp/webhook", (req, res) => { const mode = req.query["hub.mode"], token = req.query["hub.verify_token"], challenge = req.query["hub.challenge"]; if (!process.env.WHATSAPP_VERIFY_TOKEN) return res.status(503).send("WHATSAPP_VERIFY_TOKEN not configured"); if (mode === "subscribe" && token === process.env.WHATSAPP_VERIFY_TOKEN) return res.status(200).send(challenge || ""); return res.sendStatus(403); });
