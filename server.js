@@ -6,6 +6,7 @@ const business = require("./business");
 const { buildPeachTemplatePayload, normalizePeachWebhook, publicWebhookAudit } = require("./peach");
 const rendererRuntime = require("./renderers/runtime");
 const kaggleControl = require("./renderers/kaggle-control");
+const kaggleGenerationManager = require("./renderers/kaggle-generation-manager");
 const { renderImage, status: imageRendererStatus } = require("./renderers/native-image-adapter");
 const assetStore = require("./renderers/asset-store");
 const { youtubeConfigured, uploadYouTubeVideo, getYouTubeVideoStatus } = require("./youtube");
@@ -118,8 +119,11 @@ app.post("/api/kaggle/execute", async (req, res) => {
   const body = req.body || {};
   if (typeof body.text !== "string" || !body.text.trim()) return res.status(400).json({ ok: false, error: "kernel_text_required" });
   try {
-    const result = await kaggleControl.executeKernelCode(body.text, {
-      newTitle: body.newTitle || "ZOZ AI Kaggle Renderer",
+    const result = await kaggleGenerationManager.submitImageGeneration({
+      text: body.text,
+      title: body.newTitle || "ZOZ AI Kaggle Renderer",
+      prompt: body.prompt || "",
+      requestedOutputs: Array.isArray(body.requestedOutputs) ? body.requestedOutputs.map(String) : [],
       language: body.language || "python",
       kernelType: body.kernelType || "script",
       enableGpu: body.enableGpu !== false,
@@ -127,10 +131,15 @@ app.post("/api/kaggle/execute", async (req, res) => {
       isPrivate: body.isPrivate !== false,
       machineShape: body.machineShape || "Gpu"
     });
-    res.status(result.ok ? 200 : (result.status || 502)).json(result);
+    res.status(result.ok ? 202 : (result.status || 502)).json(result);
   } catch (error) {
     res.status(502).json({ ok: false, error: "kaggle_execute_failed" });
   }
+});
+app.get("/api/kaggle/jobs", async (req, res) => {
+  if (!authorizeCron(req, res)) return;
+  try { res.json({ ok: true, jobs: await kaggleGenerationManager.listActiveJobs(50) }); }
+  catch (error) { res.status(502).json({ ok: false, error: "kaggle_jobs_failed" }); }
 });
 app.get("/api/renderers/status", (req, res) => res.json({ ...rendererRuntime.status(), imageProvider: imageRendererStatus() }));
 app.get("/api/renderers/providers", (req, res) => res.json({ image: imageRendererStatus(), policy: rendererRuntime.inspectLibrary().policy, financialApprovalRequired: true }));
