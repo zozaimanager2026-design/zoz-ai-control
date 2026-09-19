@@ -1,7 +1,7 @@
 {
   "name": "zoz-ai-control",
   "version": "1.0.2",
-  "description": "ZOZ AI — AI Business Operating System",
+  "description": "ZOZ AI — AI Business Operating System (production runtime)",
   "main": "server.js",
   "scripts": {
     "start": "node scripts/repair-business-api-runtime.js && node scripts/enable-postgres-persistence.js && node scripts/repair-legacy-media-state.js && node scripts/autonomous-heartbeat.js",
