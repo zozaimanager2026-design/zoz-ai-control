@@ -161,7 +161,7 @@ loadState().then(() => audit("system_started", { persistence: persistence.enable
 module.exports = app;
 if (!process.env.VERCEL) app.listen(PORT, () => {
   console.log(ZOZ_NAME + " running on port " + PORT);
-  if (process.env.ZOZ_RENDERER_SMOKE_TEST === "true") {
+  if (process.env.ZOZ_RENDERER_SMOKE_TEST === "true" && process.env.ZOZ_RENDERER_SMOKE_TEST_FORCE === "true") {
     setTimeout(async () => {
       const prompt = "A clean futuristic ZOZ AI business operating system dashboard, premium technology branding, square composition";
       console.log("[ZOZ_RENDERER_SMOKE_TEST] started", JSON.stringify({ provider: process.env.ZOZ_IMAGE_PROVIDER || "default", prompt }));
