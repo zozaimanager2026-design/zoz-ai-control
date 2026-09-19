@@ -12,8 +12,8 @@ function config() {
     enabled: Boolean(process.env.ZOZ_HF_SPACE_URL),
     spaceUrl: String(process.env.ZOZ_HF_SPACE_URL || "").replace(/\/$/, ""),
     apiName: String(process.env.ZOZ_HF_API_NAME || "infer"),
-    profile: String(process.env.ZOZ_HF_PROFILE || "qwen-image-2512"),
-    model: String(process.env.ZOZ_HF_MODEL || "Qwen/Qwen-Image-2512"),
+    profile: String(process.env.ZOZ_HF_PROFILE || "qwen-image"),
+    model: String(process.env.ZOZ_HF_MODEL || "Qwen/Qwen-Image"),
     timeoutMs: Number(process.env.ZOZ_HF_TIMEOUT_MS || 300000),
     tokenConfigured: Boolean(process.env.HF_TOKEN),
     publicSpaceSupported: true,
@@ -324,20 +324,24 @@ async function generateViaZeroGPU(input = {}) {
   if (!prompt) return { ok: false, status: "blocked", reason: "image_prompt_required" };
 
   try {
+    console.log("[ZOZ_HF_ZERO_GPU] primary attempt", JSON.stringify({ profile: cfg.profile, model: cfg.model, spaceUrl: cfg.spaceUrl }));
     const primary = await generateAgainstSpace(input, cfg);
     if (primary.ok) return primary;
+    console.warn("[ZOZ_HF_ZERO_GPU] primary failed", JSON.stringify({ reason: primary.reason, event: primary.event || null, detail: primary.detail || null, httpStatus: primary.httpStatus || null }));
 
     // Free fallback: the original Qwen-Image Space runs on ZeroGPU large (1× quota),
     // while Qwen-Image-2512 uses xlarge (2× quota). Try it before declaring the
     // free path unavailable, without changing ZOZ's financial approval rules.
     const primaryIs2512 = cfg.profile === "qwen-image-2512" || /Qwen-Image-2512/i.test(cfg.model);
-    if (primaryIs2512) {
+    const shouldTryLegacy = primaryIs2512 || cfg.profile !== "qwen-image";
+    if (shouldTryLegacy) {
       const fallback = await generateAgainstSpace(input, {
         spaceUrl: "https://qwen-qwen-image.hf.space",
         apiName: "infer",
         profile: "qwen-image",
         model: "Qwen/Qwen-Image"
       });
+      console.log("[ZOZ_HF_ZERO_GPU] legacy fallback result", JSON.stringify({ ok: fallback.ok, reason: fallback.reason || null, event: fallback.event || null, detail: fallback.detail || null, httpStatus: fallback.httpStatus || null }));
       if (fallback.ok) return { ...fallback, fallbackFrom: "qwen-image-2512" };
       return {
         ok: false,
