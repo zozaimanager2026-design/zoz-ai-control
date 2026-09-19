@@ -222,7 +222,7 @@ async function browserZeroGpu(input = {}) {
       true,
       ratio,
       4,
-      Number(input.steps || 4),
+      Math.max(1, Math.min(50, Number(input.steps || 4))),
       false
     ]})
   });
