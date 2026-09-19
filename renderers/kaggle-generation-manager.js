@@ -242,8 +242,7 @@ async function ingestCompletedJob(job) {
       const filename = fileNameOf(file).replace(/[^a-zA-Z0-9._-]/g, "_").slice(-120);
       const asset = await assetStore.persistImage({
         id: "img_kaggle_" + job.id + "_" + filename,
-        imageBase64: bytes.toString("base64"),
-        mimeType: /\.jpe?g$/i.test(filename) ? "image/jpeg" : /\.webp$/i.test(filename) ? "image/webp" : "image/png",
+        imageBase64: "data:" + (/\.jpe?g$/i.test(filename) ? "image/jpeg" : /\.webp$/i.test(filename) ? "image/webp" : /\.gif$/i.test(filename) ? "image/gif" : "image/png") + ";base64," + bytes.toString("base64"),
         prompt: locked.prompt || "ZOZ AI Kaggle image generation",
         provider: "kaggle"
       });
