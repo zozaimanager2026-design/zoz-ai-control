@@ -132,6 +132,10 @@ async function insertJob(job) {
 
 async function submitImageGeneration({ text, title, prompt = "", requestedOutputs = [], ...options } = {}) {
   if (!kaggle.configured()) return { ok: false, status: 503, error: "kaggle_not_configured" };
+  if (!pool) return { ok: false, status: 503, error: "kaggle_job_tracking_requires_postgresql" };
+  await ensureTable();
+  const active = await listActiveJobs(2);
+  if (active.length) return { ok: false, status: 409, error: "kaggle_generation_already_active", activeJobId: active[0].id };
   const id = "kaggle_job_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
   const newTitle = title || ("ZOZ AI Kaggle Renderer " + Date.now());
   const pushed = await kaggle.executeKernelCode(text, {
