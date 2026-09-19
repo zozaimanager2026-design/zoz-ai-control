@@ -80,7 +80,7 @@ async function main() {
   console.log("[ZOZ_KAGGLE_REAL_LOGO] starting", JSON.stringify({ kernel, model: "stabilityai/stable-diffusion-xl-base-1.0", width: 1024, height: 1024 }));
   const pushed = await kaggle.executeKernelCode(python, {
     kernel,
-    newTitle: "ZOZ AI — Real Logo Renderer",
+    newTitle: "ZOZ AI — Real Logo Renderer " + Date.now(),
     language: "python",
     kernelType: "script",
     enableGpu: true,
