@@ -115,3 +115,7 @@ Required renderer environment variables:
 - `ZOZ_IMAGE_MODEL` — optional model override; default `Qwen/Qwen-Image-2512`.
 
 The renderer keeps a fallback to the existing ZOZ-owned native HTTP service through `ZOZ_NATIVE_IMAGE_RENDERER_URL`. No paid provider is introduced by this change.
+
+
+## Image persistence
+ZOZ stores generated images in PostgreSQL as the durable primary tier, with an automatic filesystem fallback and source URL recovery metadata.
