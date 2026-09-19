@@ -66,6 +66,27 @@ app.post("/api/renderer/improve", (req, res) => {
 
 async function heartbeat(trigger = "scheduled") {
   if (running) return;
+  if (trigger === "startup" && process.env.ZOZ_ASSET_STORE_SELF_TEST === "true") {
+    try {
+      const assetStore = require("../renderers/asset-store");
+      const testId = "asset_selftest_" + Date.now();
+      const tinyPng = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+      const saved = await assetStore.persistImage({ id: testId, imageBase64: tinyPng, prompt: "ZOZ asset store self-test", provider: "internal-self-test" });
+      const loaded = saved.ok ? await assetStore.getImage(testId) : null;
+      console.log("[ZOZ_ASSET_STORE_SELF_TEST]", JSON.stringify({
+        ok: Boolean(saved.ok && loaded),
+        savedOk: saved.ok === true,
+        primary: saved.primary === true,
+        backup: saved.backup === true,
+        loaded: Boolean(loaded),
+        tier: loaded?.tier || null,
+        sizeBytes: saved.sizeBytes || null,
+        url: saved.url || null
+      }));
+    } catch (error) {
+      console.error("[ZOZ_ASSET_STORE_SELF_TEST]", JSON.stringify({ ok: false, error: "asset_store_self_test_failed" }));
+    }
+  }
   if (trigger === "startup" && process.env.ZOZ_KAGGLE_READONLY_STARTUP_CHECK === "true") {
     try {
       const kaggleControl = require("../renderers/kaggle-control");
