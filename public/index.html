@@ -296,8 +296,18 @@ async function generateImage() {
       });
       if (!result.ok || !result.imageUrl) throw new Error(result.reason || browserError.message || "لم تصل صورة");
     }
+    if (result?.imageUrl && !String(result.imageUrl).startsWith("/api/assets/")) {
+      const saved = await postJson("/api/assets/import", {
+        imageUrl: result.imageUrl,
+        prompt,
+        provider: result.provider || "browser-renderer"
+      });
+      if (!saved?.ok || !saved?.imageUrl) throw new Error(saved?.error || "تعذر حفظ الصورة في التخزين الدائم.");
+      result.imageUrl = saved.imageUrl;
+      result.asset = saved.asset;
+    }
     status.className = "gallery-status success";
-    status.textContent = "✅ تم توليد الصورة فعليًا.";
+    status.textContent = "✅ تم توليد الصورة وحفظها تلقائيًا في التخزين الدائم.";
     const image = document.createElement("img");
     image.src = result.imageUrl;
     image.alt = "ZOZ AI generated image";
