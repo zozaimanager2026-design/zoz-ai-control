@@ -2,6 +2,7 @@ const { runAutonomousRuntime } = require("../autonomous-runtime");
 require("./vercel-token-route");
 const app = require("../server");
 const rendererRuntime = require("../renderers/runtime");
+const kaggleGenerationManager = require("../renderers/kaggle-generation-manager");
 
 const INTERVAL_MS = Math.max(5 * 60 * 1000, Number(process.env.ZOZ_AUTONOMY_INTERVAL_MS || 15 * 60 * 1000));
 const MAX_RENDERER_CONCURRENCY = Math.max(1, Math.min(2, Number(process.env.ZOZ_RENDERER_MAX_CONCURRENCY || 1)));
@@ -142,3 +143,4 @@ setInterval(() => heartbeat("scheduled"), INTERVAL_MS);
 
 console.log(`[ZOZ autonomous heartbeat v3] enabled every ${INTERVAL_MS}ms`);
 console.log(`[ZOZ integrated renderer] enabled with max concurrency ${MAX_RENDERER_CONCURRENCY}`);
+console.log(`[ZOZ Kaggle generation manager] ${kaggleGenerationManager.startMonitoring() ? "enabled" : "not configured"}`);
