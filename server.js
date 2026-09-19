@@ -5,6 +5,7 @@ const path = require("path");
 const business = require("./business");
 const { buildPeachTemplatePayload, normalizePeachWebhook, publicWebhookAudit } = require("./peach");
 const rendererRuntime = require("./renderers/runtime");
+const kaggleControl = require("./renderers/kaggle-control");
 const { renderImage, status: imageRendererStatus } = require("./renderers/native-image-adapter");
 const assetStore = require("./renderers/asset-store");
 const { youtubeConfigured, uploadYouTubeVideo, getYouTubeVideoStatus } = require("./youtube");
@@ -108,6 +109,7 @@ app.post("/api/jobs/:id/execute", async (req, res) => { const job = state.jobs.f
 app.post("/api/replies/preview", (req, res) => { const text = req.body?.text || ""; res.json({ text, financialApprovalRequired: isFinanciallySensitive(text), ready: true }); });
 app.get("/api/connectors/status", (req, res) => res.json({ ...state.connectors, persistence: { enabled: persistence.enabled, provider: persistence.provider } }));
 app.get("/api/connectors/requirements", (req, res) => res.json({ whatsapp: "PEACH_API_KEY + PEACH_TEMPLATE_ID + WHATSAPP_SEND_SECRET; Meta webhook uses WHATSAPP_VERIFY_TOKEN + WHATSAPP_APP_SECRET", database: "DATABASE_URL or KV_REST_API_URL + KV_REST_API_TOKEN", cron: "CRON_SECRET", financialRule: "لا دفع أو شراء أو تحويل أو استلام أموال دون Human Approval" }));
+app.get("/api/kaggle/status", async (req, res) => { try { res.json(await kaggleControl.kernelStatus()); } catch (error) { res.status(502).json({ ok: false, error: "kaggle_status_failed" }); } });
 app.get("/api/renderers/status", (req, res) => res.json({ ...rendererRuntime.status(), imageProvider: imageRendererStatus() }));
 app.get("/api/renderers/providers", (req, res) => res.json({ image: imageRendererStatus(), policy: rendererRuntime.inspectLibrary().policy, financialApprovalRequired: true }));
 app.get("/api/renderers/policy", (req, res) => res.json(rendererRuntime.inspectLibrary().policy));
