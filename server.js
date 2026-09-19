@@ -110,6 +110,27 @@ app.post("/api/replies/preview", (req, res) => { const text = req.body?.text || 
 app.get("/api/connectors/status", (req, res) => res.json({ ...state.connectors, persistence: { enabled: persistence.enabled, provider: persistence.provider } }));
 app.get("/api/connectors/requirements", (req, res) => res.json({ whatsapp: "PEACH_API_KEY + PEACH_TEMPLATE_ID + WHATSAPP_SEND_SECRET; Meta webhook uses WHATSAPP_VERIFY_TOKEN + WHATSAPP_APP_SECRET", database: "DATABASE_URL or KV_REST_API_URL + KV_REST_API_TOKEN", cron: "CRON_SECRET", financialRule: "لا دفع أو شراء أو تحويل أو استلام أموال دون Human Approval" }));
 app.get("/api/kaggle/status", async (req, res) => { if (!authorizeCron(req, res)) return; try { res.json(await kaggleControl.kernelStatus()); } catch (error) { res.status(502).json({ ok: false, error: "kaggle_status_failed" }); } });
+app.get("/api/kaggle/output", async (req, res) => { if (!authorizeCron(req, res)) return; try { const result = await kaggleControl.kernelOutput(); res.status(result.ok ? 200 : (result.status || 502)).json(result); } catch (error) { res.status(502).json({ ok: false, error: "kaggle_output_failed" }); } });
+app.get("/api/kaggle/pull", async (req, res) => { if (!authorizeCron(req, res)) return; try { const result = await kaggleControl.pullKernel(); res.status(result.ok ? 200 : (result.status || 502)).json(result); } catch (error) { res.status(502).json({ ok: false, error: "kaggle_pull_failed" }); } });
+app.post("/api/kaggle/execute", async (req, res) => {
+  if (!authorizeCron(req, res)) return;
+  const body = req.body || {};
+  if (typeof body.text !== "string" || !body.text.trim()) return res.status(400).json({ ok: false, error: "kernel_text_required" });
+  try {
+    const result = await kaggleControl.executeKernelCode(body.text, {
+      newTitle: body.newTitle || "ZOZ AI Kaggle Renderer",
+      language: body.language || "python",
+      kernelType: body.kernelType || "script",
+      enableGpu: body.enableGpu !== false,
+      enableInternet: body.enableInternet !== false,
+      isPrivate: body.isPrivate !== false,
+      machineShape: body.machineShape || "Gpu"
+    });
+    res.status(result.ok ? 200 : (result.status || 502)).json(result);
+  } catch (error) {
+    res.status(502).json({ ok: false, error: "kaggle_execute_failed" });
+  }
+});
 app.get("/api/renderers/status", (req, res) => res.json({ ...rendererRuntime.status(), imageProvider: imageRendererStatus() }));
 app.get("/api/renderers/providers", (req, res) => res.json({ image: imageRendererStatus(), policy: rendererRuntime.inspectLibrary().policy, financialApprovalRequired: true }));
 app.get("/api/renderers/policy", (req, res) => res.json(rendererRuntime.inspectLibrary().policy));
