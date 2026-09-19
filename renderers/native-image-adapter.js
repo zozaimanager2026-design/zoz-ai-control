@@ -6,6 +6,7 @@ const { generateViaZeroGPU, config: hfConfig } = require("./huggingface-zerogpu"
 const runpod = require("./runpod-serverless-image-adapter");
 const CLOUDFLARE_AI_URL = String(process.env.ZOZ_CLOUDFLARE_AI_URL || "").replace(/\/$/, "");
 
+console.log("[ZOZ_NATIVE_IMAGE_ADAPTER_V2] loaded from current main");
 const provider = () => String(process.env.ZOZ_IMAGE_PROVIDER || "native").trim().toLowerCase();
 const paidProvider = selected => selected === "runpod-serverless";
 
