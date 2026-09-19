@@ -43,6 +43,24 @@ function extractStatusValue(value) {
   return null;
 }
 
+function extractVersionNumber(payload) {
+  const seen = new Set();
+  function walk(value) {
+    if (!value || typeof value !== "object" || seen.has(value)) return null;
+    seen.add(value);
+    for (const key of ["versionNumber", "version_number", "currentVersionNumber", "current_version_number"]) {
+      const valueAtKey = value[key];
+      if (valueAtKey !== undefined && valueAtKey !== null && String(valueAtKey).trim() !== "") return String(valueAtKey);
+    }
+    for (const key of Object.keys(value)) {
+      const found = walk(value[key]);
+      if (found) return found;
+    }
+    return null;
+  }
+  return walk(payload?.result || payload);
+}
+
 function normalizeStatus(payload) {
   const status = extractStatusValue(payload?.result || payload);
   if (status) return status;
@@ -273,7 +291,17 @@ async function monitorOnce() {
     try {
       const statusResult = await kaggle.kernelStatus();
       const normalized = normalizeStatus(statusResult);
+      const observedVersion = extractVersionNumber(statusResult);
+      const expectedVersion = job.version_number ? String(job.version_number) : null;
+      const versionMismatch = Boolean(expectedVersion && observedVersion && expectedVersion !== observedVersion);
       const patch = { kaggle_status: normalized };
+      if (versionMismatch) {
+        patch.status = "submitted";
+        patch.output_meta = { expectedVersion, observedVersion };
+        await updateJob(job.id, patch);
+        results.push({ id: job.id, status: "submitted", kaggleStatus: normalized, expectedVersion, observedVersion });
+        continue;
+      }
       if (normalized === "running" || normalized === "queued" || normalized === "processing" || normalized === "pending") patch.status = "running";
       if (isTerminalFailure(normalized)) {
         patch.status = "failed";
@@ -310,4 +338,4 @@ function startMonitoring() {
   return true;
 }
 
-module.exports = { submitImageGeneration, monitorOnce, startMonitoring, listActiveJobs, normalizeStatus, ensureTable };
+module.exports = { submitImageGeneration, monitorOnce, startMonitoring, listActiveJobs, normalizeStatus, extractVersionNumber, ensureTable };
