@@ -43,7 +43,7 @@ function movieFor(content) {
     { type: "text", text: index === 0 ? title : "ZOZ AI", duration: -1, settings: { "font-size": 48, "font-weight": 900, "color": "#FFFFFF", "align": "center" } },
     { type: "voice", text: chunk, model: process.env.J2V_VOICE_MODEL || "azure", voice: process.env.J2V_VOICE || "ar-SA-HamedNeural", duration: -1 }
   ] }));
-  return normalizeRendererSchema({ resolution: "full-hd", quality: "high", cache: false, comment: `ZOZ AI professional Arabic content episode — renderer v5 — target ${TARGET_VIDEO_SECONDS}s`, scenes, elements: [{ type: "subtitles", language: "ar", settings: { style: "classic-progressive", position: "bottom-center", "max-words-per-line": 4, "font-size": 48, "font-weight": 900, "line-color": "white", "word-color": "#D8FF3E", "outline-color": "black", "outline-width": 4 } }] });
+  return normalizeRendererSchema({ resolution: "full-hd", quality: "high", cache: false, comment: `ZOZ AI professional Arabic content episode — renderer v5 — target ${TARGET_VIDEO_SECONDS}s`, scenes, elements: [{ type: "subtitles", language: "ar", settings: { style: "classic-progressive", position: "bottom-center", "max-words-per-line": 4, "font-size": 48, "font-weight": 900, "line-color": "#FFFFFF", "word-color": "#D8FF3E", "outline-color": "#000000", "outline-width": 4 } }] });
 }
 function legacyRendererError(reason) { const text = String(reason || "").toLowerCase(); return text.includes("font-size") && (text.includes("string") || text.includes("42px") || text.includes("expected integer")); }
 async function submitRender(content) {
